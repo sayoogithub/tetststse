@@ -987,21 +987,21 @@ async def _resolve_timer_target(cfg, guild, channel, role_arg):
 FREEZE_EMOJI = "<:ban:1542637913630838825>"
 
 # ----- Ticket system -----
-TICKET_PANEL_CHANNEL_ID = 1537932706506215434
-TICKET_SUPPORT_CATEGORY_ID = 1543648690231705790
-TICKET_PURCHASE_CATEGORY_ID = 1543864452447866991
+TICKET_PANEL_CHANNEL_ID = 1560726846461448202
+TICKET_SUPPORT_CATEGORY_ID = 1560726802022793226
+TICKET_PURCHASE_CATEGORY_ID = 1560726814756970516
 TICKET_EMOJI = "<:ticket:1542791337785425991>"
 MONEY_EMOJI2 = "<:money:1542638222029361212>"
 GUIDE_EMOJI = "<:guide:1542638280858669156>"
 SHOP_EMOJI2 = "<a:shopping:1537938659716894731>"
 WARN_EMOJI2 = "<a:warnings:1537938330946240612>"
-LTC_ADDRESS = "LZnytAtTzjGqUeLWHpkvhkK2U8z5f5fov5"
+LTC_ADDRESS = "Lf5iRNRbxKjB9bLFgk6cuTS4To6Pzs37iz"
 
 TICKET_PLANS = [
-    {"key": "12h", "label": "12h", "usd": 5},
-    {"key": "24h", "label": "24h", "usd": 10},
-    {"key": "48h", "label": "48h", "usd": 20},
-    {"key": "life", "label": "Lifetime", "usd": 450},
+    {"key": "12h", "label": "12h", "eur": 8},
+    {"key": "24h", "label": "24h", "eur": 15},
+    {"key": "48h", "label": "48h", "eur": 25},
+    {"key": "life", "label": "Lifetime", "eur": 200},
 ]
 
 STAFF_ROLE_ID = 1560725991188467763   # only this role can use /timer and /add
