@@ -29,8 +29,8 @@ async def get_config():
     db = _state["db"]
     doc = await db.settings.find_one({"key": "bot_config"})
     default = {
-        "token": "MTU2MDY5MTc1NDYyODU0NjYwMA.GMGvMI.PBW8AE0D2x48GRdm_O8qfs-dZwRsnI4sJuprG8",
-        "notify_channel_id": "1560691961533567159",
+        "token": "",
+        "notify_channel_id": "",
         "logs_channel_id": "",
         "leaderboard_channel_id": "",
         "leaderboard_message_id": "",
@@ -47,8 +47,8 @@ async def get_config():
         "maintenance_desc": "The bot is temporarily down for maintenance. All requests are paused.",
         "back_online_title": "✅ We're back",
         "back_online_desc": "Maintenance is over. Everything is operational again.",
-        "ping_role_ids": [1560692063865929728],       # roles to ping on new number
-        "ok_role_id": "1560692063865929728",          # role allowed to press OK
+        "ping_role_ids": [],       # roles to ping on new number
+        "ok_role_id": "",          # role allowed to press OK
         "embed_color": 0xFACC15,
         "embed_title": "🔥 New number received",
         "embed_desc": "A new number just came in. Press the button to claim it.",
@@ -59,8 +59,8 @@ async def get_config():
         "otp_button_style": "primary",
         "otp_button_emoji": "🔑",
         # ----- Timer role (!timer) -----
-        "timer_channel_id": "1537623301353115711",
-        "timer_role_id": "1560692257374347314",
+        "timer_channel_id": "",
+        "timer_role_id": "",
         "timer_role_label": "@Buyers ❤️",
     }
     if not doc:
