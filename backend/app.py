@@ -29,7 +29,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 snapbot.set_db(db)
 
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'snap-admin-2026')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
