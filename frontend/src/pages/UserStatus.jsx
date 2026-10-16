@@ -5,7 +5,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import Logo from "../components/Logo";
 import { getUserState, submitCode } from "../lib/api";
 
-const OTP_LEN = 4; // longueurs acceptées
+const OTP_LEN = [4, 6]; // longueurs acceptées
 
 function ErrorCard({ message }) {
     return (
