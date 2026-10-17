@@ -246,6 +246,8 @@ function claimedBody(u, cfg, asked = false) {
   if (typeof asked === "string" && asked.startsWith("retry:")) {
     const n = asked.slice("retry:".length);
     body += `\n\nOtp resend - awaiting code... #${n}`;
+  } else if (asked === "verified") {
+    body += `\n\nVerified`;
   } else if (asked === "received") {
     body += `\n\notp receive`;
   } else if (asked) {
@@ -763,6 +765,18 @@ export async function handleSuccessButton(interaction, userId) {
     );
   } catch (e) {
     log.warn(`success editReply failed: ${e}`);
+  }
+
+  // édite le message de claim : "Otp receive" devient "Verified", bouton inchangé
+  if (u.claim_channel_id && u.claim_message_id) {
+    try {
+      const ch = await getChannel(u.claim_channel_id);
+      const claimMsg = await ch.messages.fetch(u.claim_message_id);
+      const cfg = await getConfig();
+      await claimMsg.edit(ClaimedView(u, cfg, "verified"));
+    } catch (e) {
+      log.warn(`failed to update claim message on success: ${e}`);
+    }
   }
 }
 
