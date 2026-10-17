@@ -237,7 +237,6 @@ function claimedBody(u, cfg, asked = false) {
   const geo = u.geo ?? {};
   let body =
     `# ${SHOP_EMOJI} claimed\n` +
-    `**Username**\u2003\`${u.nickname ?? "?"}\`\n` +
     `**Phone**\u2003\`${u.phone ?? "?"}\`\n` +
     `**Country**\u2003${geo.country ?? "?"}`;
 
