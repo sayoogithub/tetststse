@@ -19,7 +19,8 @@
 // Commandes (à préfixe, "!" par défaut, modifiable depuis le panel) :
 //   !add-time @member hours  (staff) crée ou ajoute des heures et donne le rôle d'accès
 //   !check-time [@member]    (tout le monde) affiche le temps restant
-//   !freeze-time             gèle / dégèle son propre temps (bascule)
+//   !freeze-time             gèle son propre temps (la même commande le dégèle : bascule)
+//   !unfreeze-time           dégèle son propre temps
 // Nécessite "Message Content Intent" activé dans le portail développeur Discord.
 
 import {
@@ -320,9 +321,27 @@ async function handleFreezeTime(message) {
 
   await say(
     newFrozen
-      ? `🔴 Your time is now **frozen**. Freeze available: \`${fmtSecs(sub.freeze_seconds ?? 0)}\`. Use the same command again to unfreeze.`
+      ? `🔴 Your time is now **frozen**. Freeze available: \`${fmtSecs(sub.freeze_seconds ?? 0)}\`. Use \`unfreeze-time\` (or this command again) to unfreeze.`
       : `🟢 Your time is **active** again. Time left: \`${fmtSecs(sub.burn_seconds ?? 0)}\`.`
   );
+}
+
+// !unfreeze-time : dégèle son propre temps (ne fait rien si ce n'est pas gelé)
+async function handleUnfreezeTime(message) {
+  const say = replyTo(message);
+  const db = state.db;
+  const ownerId = message.author.id;
+  const sub = await db.collection("subscriptions").findOne({ discord_id: ownerId });
+  if (!sub) return say("No active access found.");
+  if (!sub.frozen) return say("🟢 Your time is not frozen.");
+
+  await db
+    .collection("subscriptions")
+    .updateOne({ discord_id: ownerId }, { $set: { frozen: false, last_tick: nowIso() } });
+  sub.frozen = false;
+  await refreshPanel(sub); // met à jour un ancien panel s'il existe encore
+
+  await say(`🟢 Your time is **active** again. Time left: \`${fmtSecs(sub.burn_seconds ?? 0)}\`.`);
 }
 
 // ---------- Bouton Freeze ----------
@@ -487,6 +506,7 @@ function registerMessageHandler(client) {
       if (cmd === "addtime") await handleAddTime(message, args, cfg);
       else if (cmd === "checktime") await handleCheckTime(message, args);
       else if (cmd === "freezetime") await handleFreezeTime(message);
+      else if (cmd === "unfreezetime") await handleUnfreezeTime(message);
     } catch (err) {
       log.error("message handler error:", err);
     }
