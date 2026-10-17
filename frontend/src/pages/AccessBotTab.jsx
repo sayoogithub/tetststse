@@ -160,8 +160,11 @@ export default function AccessBotTab({ token }) {
                             <li><code>{(cfg.prefix || "!") + "add-time @member hours"}</code> (staff) : crée / ajoute des heures</li>
                             <li><code>{(cfg.prefix || "!") + "add-time all hours"}</code> (staff) : ajoute des heures à tous + DM</li>
                             <li><code>{(cfg.prefix || "!") + "check-time [@member]"}</code> : temps restant</li>
+                            <li><code>{(cfg.prefix || "!") + "check-time all"}</code> (staff) : temps restant de tous</li>
                             <li><code>{(cfg.prefix || "!") + "freeze-time"}</code> : gèle son propre temps</li>
+                            <li><code>{(cfg.prefix || "!") + "freeze-time all"}</code> (staff) : gèle tout le monde + DM</li>
                             <li><code>{(cfg.prefix || "!") + "unfreeze-time"}</code> : dégèle son propre temps</li>
+                            <li><code>{(cfg.prefix || "!") + "unfreeze-time all"}</code> (staff) : dégèle tout le monde + DM</li>
                             <li><code>{(cfg.prefix || "!") + "help"}</code> : liste des commandes</li>
                         </ul>
                     </div>
