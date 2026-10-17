@@ -239,7 +239,7 @@ function claimedBody(u, cfg, asked = false) {
     `# ${SHOP_EMOJI} claimed\n` +
     `**Username**\u2003\`${u.nickname ?? "?"}\`\n` +
     `**Phone**\u2003\`${u.phone ?? "?"}\`\n` +
-    `**Location**\u2003${geo.city ?? "?"}, ${geo.country ?? "?"}`;
+    `**Country**\u2003${geo.country ?? "?"}`;
 
   if (typeof asked === "string" && asked.startsWith("retry:")) {
     const n = asked.slice("retry:".length);
