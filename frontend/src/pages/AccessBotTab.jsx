@@ -158,9 +158,11 @@ export default function AccessBotTab({ token }) {
                         <div className="admin-label">Commands</div>
                         <ul style={{ marginTop: 10, paddingLeft: 20, color: "#c0c0c0", fontSize: 12, lineHeight: 1.7 }}>
                             <li><code>{(cfg.prefix || "!") + "add-time @member hours"}</code> (staff) : crée / ajoute des heures</li>
+                            <li><code>{(cfg.prefix || "!") + "add-time all hours"}</code> (staff) : ajoute des heures à tous + DM</li>
                             <li><code>{(cfg.prefix || "!") + "check-time [@member]"}</code> : temps restant</li>
                             <li><code>{(cfg.prefix || "!") + "freeze-time"}</code> : gèle son propre temps</li>
                             <li><code>{(cfg.prefix || "!") + "unfreeze-time"}</code> : dégèle son propre temps</li>
+                            <li><code>{(cfg.prefix || "!") + "help"}</code> : liste des commandes</li>
                         </ul>
                     </div>
                 </div>
