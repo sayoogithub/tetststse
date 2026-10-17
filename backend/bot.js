@@ -493,6 +493,14 @@ export async function handleotpButton(interaction, userId) {
     });
   }
 
+  // seul celui qui a cliqué OK (le presser) peut cliquer sur "Ask otp"
+  if (u.discord_presser_id !== interaction.user.id) {
+    return interaction.followUp({
+      content: "❌ Only the person who claimed this can press Ask otp.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
   await db
     .collection("users")
     .updateOne(
