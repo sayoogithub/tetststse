@@ -18,9 +18,11 @@
 //
 // Commandes (à préfixe, "!" par défaut, modifiable depuis le panel) :
 //   !add-time @member hours  (staff) crée ou ajoute des heures et donne le rôle d'accès
+//   !add-time all hours      (staff) ajoute des heures à TOUS les abonnés + DM
 //   !check-time [@member]    (tout le monde) affiche le temps restant
 //   !freeze-time             gèle son propre temps (la même commande le dégèle : bascule)
 //   !unfreeze-time           dégèle son propre temps
+//   !help                    affiche la liste des commandes
 // Nécessite "Message Content Intent" activé dans le portail développeur Discord.
 
 import {
@@ -240,9 +242,9 @@ function baseEmbed(cfg, color, title, description) {
   return e;
 }
 
-// Répond à un message avec un embed, sans pinguer personne
+// Envoie l'embed dans le salon (sans "répondre" au message de la commande), sans pinguer personne
 const sendEmbed = (message) => (embed) =>
-  message.reply({ embeds: [embed], allowedMentions: { parse: [], repliedUser: false } });
+  message.channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
 
 // Temps réellement restant, en tenant compte du temps écoulé depuis le dernier tick (≤ 60 s)
 function liveSeconds(sub) {
@@ -277,6 +279,51 @@ function timeFields(sub) {
 const errorEmbed = (cfg, title, description) => baseEmbed(cfg, COLOR_RED, title, description);
 
 // ---------- Commandes ----------
+// !add-time all <hours> : ajoute des heures à TOUS les abonnés et leur envoie un DM
+async function handleAddTimeAll(message, args, cfg) {
+  const send = sendEmbed(message);
+  const hours = parseInt(args[1], 10);
+  if (!Number.isInteger(hours) || String(hours) !== String(args[1])) {
+    return send(errorEmbed(cfg, "⚠️ Usage", `\`${cfg.prefix}add-time all hours\``));
+  }
+  if (hours <= 0) return send(errorEmbed(cfg, "⚠️ Invalid hours", "Hours must be a positive number."));
+
+  const col = state.db.collection("subscriptions");
+  if ((await col.countDocuments({})) === 0) {
+    return send(errorEmbed(cfg, "❌ No active access", "There are no active subscriptions."));
+  }
+
+  const addSecs = hours * 3600;
+  await col.updateMany({}, { $inc: { burn_seconds: addSecs, freeze_seconds: addSecs } });
+  const subs = await col.find({}).toArray();
+
+  let sent = 0;
+  let failed = 0;
+  for (const sub of subs) {
+    await refreshPanel(sub); // met à jour un ancien panel s'il existe encore
+    try {
+      const user = await state.bot.users.fetch(sub.discord_id);
+      const dm = baseEmbed(
+        cfg,
+        COLOR_GREEN,
+        "➕ Time added",
+        `**+${hours} hour(s)** of access were added to your account.`
+      )
+        .addFields(timeFields(sub))
+        .setThumbnail(user.displayAvatarURL({ size: 256 }));
+      await user.send({ embeds: [dm] });
+      sent++;
+    } catch {
+      failed++; // DMs fermés, utilisateur introuvable...
+    }
+    await sleep(250); // évite de saturer l'API Discord
+  }
+
+  let text = `✅ **+${hours} hour(s)** added and DM notification sent to: **${sent} user${sent === 1 ? "" : "s"}**`;
+  if (failed) text += `\n⚠️ ${failed} DM(s) could not be delivered (DMs closed or user not found). Their time was still added.`;
+  await send(new EmbedBuilder().setColor(COLOR_GREEN).setDescription(text));
+}
+
 async function handleAddTime(message, args, cfg) {
   const send = sendEmbed(message);
 
@@ -284,10 +331,14 @@ async function handleAddTime(message, args, cfg) {
     return send(errorEmbed(cfg, "❌ Permission denied", "You don't have permission to use this command."));
   }
 
+  if ((args[0] ?? "").toLowerCase() === "all") return handleAddTimeAll(message, args, cfg);
+
   const member = await fetchMember(message.guild, args[0]);
   const hours = parseInt(args[1], 10);
   if (!member || !Number.isInteger(hours) || String(hours) !== String(args[1])) {
-    return send(errorEmbed(cfg, "⚠️ Usage", `\`${cfg.prefix}add-time @member hours\``));
+    return send(
+      errorEmbed(cfg, "⚠️ Usage", `\`${cfg.prefix}add-time @member hours\`\n\`${cfg.prefix}add-time all hours\``)
+    );
   }
   if (hours <= 0) return send(errorEmbed(cfg, "⚠️ Invalid hours", "Hours must be a positive number."));
 
@@ -390,6 +441,36 @@ async function handleFreezeTime(message, cfg) {
     : baseEmbed(cfg, COLOR_GREEN, "🟢 Time resumed", "Your countdown is running again.");
   e.addFields(timeFields(sub)).setThumbnail(message.author.displayAvatarURL({ size: 256 }));
   await send(e);
+}
+
+// !help : liste des commandes
+async function handleHelp(message, cfg) {
+  const p = cfg.prefix;
+  const e = baseEmbed(cfg, COLOR_BLUE, "📖 Access Bot — Commands", `Prefix: \`${p}\``)
+    .addFields(
+      {
+        name: `⏱️ \`${p}check-time [@member]\``,
+        value: "Shows the remaining access time (yours by default).",
+      },
+      {
+        name: `🧊 \`${p}freeze-time\``,
+        value: "Freezes your own countdown. Using it again unfreezes.",
+      },
+      {
+        name: `🟢 \`${p}unfreeze-time\``,
+        value: "Unfreezes your countdown.",
+      },
+      {
+        name: `➕ \`${p}add-time @member hours\` (staff only)`,
+        value: "Grants access or adds hours to a member.",
+      },
+      {
+        name: `➕ \`${p}add-time all hours\` (staff only)`,
+        value: "Adds hours to every member and sends them a DM.",
+      }
+    );
+  if (state.bot?.user) e.setThumbnail(state.bot.user.displayAvatarURL({ size: 256 }));
+  await sendEmbed(message)(e);
 }
 
 // !unfreeze-time : dégèle son propre temps (ne fait rien si ce n'est pas gelé)
@@ -578,6 +659,7 @@ function registerMessageHandler(client) {
       else if (cmd === "checktime") await handleCheckTime(message, args, cfg);
       else if (cmd === "freezetime") await handleFreezeTime(message, cfg);
       else if (cmd === "unfreezetime") await handleUnfreezeTime(message, cfg);
+      else if (cmd === "help") await handleHelp(message, cfg);
     } catch (err) {
       log.error("message handler error:", err);
     }
