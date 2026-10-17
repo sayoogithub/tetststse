@@ -103,7 +103,7 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
     };
 
     const full = digits.join("");
-    const ready = full.length === len && !sending;
+const ready = digits.length === len && digits.every((x) => x.length === 1) && !sending;
 
     const submit = async () => {
         setSending(true);
