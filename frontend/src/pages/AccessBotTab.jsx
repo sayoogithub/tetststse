@@ -35,7 +35,7 @@ export default function AccessBotTab({ token }) {
         setSaving(true);
         try {
             const payload = {
-                panel_channel_id: cfg.panel_channel_id || "",
+                prefix: cfg.prefix || "",
                 access_role_id: cfg.access_role_id || "",
                 staff_role_id: cfg.staff_role_id || "",
             };
@@ -93,7 +93,7 @@ export default function AccessBotTab({ token }) {
                             <div style={{ fontSize: 20, fontWeight: 700 }}>Access Bot (2nd bot)</div>
                         </div>
                         <p style={{ color: "#8a8a8a", fontSize: 13, margin: "4px 0 16px" }}>
-                            Gestion de l'accès / du temps : /add-time, /check-time et le bouton Freeze Time.
+                            Gestion de l'accès / du temps avec des commandes à préfixe : add-time, check-time et freeze-time.
                             Utilise une application Discord différente de celle du bot principal.
                         </p>
 
@@ -108,14 +108,14 @@ export default function AccessBotTab({ token }) {
                     </div>
 
                     <div className="admin-card">
-                        <div className="admin-label" style={{ marginBottom: 10 }}>Channel & roles</div>
+                        <div className="admin-label" style={{ marginBottom: 10 }}>Prefix & roles</div>
                         <p style={{ color: "#8a8a8a", fontSize: 12, margin: "0 0 10px" }}>
-                            Laisse vide pour utiliser la variable d'environnement / la valeur par défaut du bot principal.
+                            Laisse vide pour utiliser la valeur par défaut (préfixe « ! », rôles du bot principal).
                         </p>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                            {inp("Panel channel ID (shared)", "panel_channel_id", "where all access panels are posted")}
-                            {inp("Access role ID", "access_role_id", "role given by /add-time")}
-                            {inp("Staff role ID", "staff_role_id", "role allowed to use /add-time")}
+                            {inp("Command prefix", "prefix", "! (default)")}
+                            {inp("Access role ID", "access_role_id", "role given by add-time")}
+                            {inp("Staff role ID", "staff_role_id", "role allowed to use add-time")}
                         </div>
                     </div>
 
@@ -155,9 +155,9 @@ export default function AccessBotTab({ token }) {
                     <div className="admin-card">
                         <div className="admin-label">Commands</div>
                         <ul style={{ marginTop: 10, paddingLeft: 20, color: "#c0c0c0", fontSize: 12, lineHeight: 1.7 }}>
-                            <li><code>/add-time member hours</code> (staff) : crée / ajoute des heures et poste le panel</li>
-                            <li><code>/check-time [member]</code> : temps restant (éphémère)</li>
-                            <li>Bouton <b>Freeze Time</b> sur chaque panel (chacun gère son propre temps)</li>
+                            <li><code>{(cfg.prefix || "!") + "add-time @member hours"}</code> (staff) : crée / ajoute des heures</li>
+                            <li><code>{(cfg.prefix || "!") + "check-time [@member]"}</code> : temps restant</li>
+                            <li><code>{(cfg.prefix || "!") + "freeze-time"}</code> : gèle / dégèle son propre temps</li>
                         </ul>
                     </div>
                 </div>
