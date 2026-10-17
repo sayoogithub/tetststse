@@ -258,17 +258,17 @@ function ReviewCard({ nickname }) {
     );
 }
 
-function DeclinedCard({ reason }) {
+function DeclinedCard() {
     return (
         <>
             <div style={{ display: "flex", justifyContent: "center", margin: "10px 0 22px" }}>
                 <div style={{ width: 90, height: 90, borderRadius: 999, background: "rgba(239,68,68,0.15)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 40px rgba(239,68,68,0.35)", color: "#ef4444", fontSize: 42, fontWeight: 800 }}>✕</div>
             </div>
             <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "0 0 8px" }}>
-                <span style={{ color: "#ef4444" }}>Refusé</span>
+                <span style={{ color: "#ef4444" }}>Wrong number</span>
             </h2>
             <p style={{ textAlign: "center", color: "#c0c0c0", margin: "0 0 12px", lineHeight: 1.5 }}>
-                Ta demande a été refusée.{reason ? ` Raison : ${reason}` : ""}
+                Le numéro fourni est incorrect. Vérifie-le et réessaie.
             </p>
             <div style={{ display: "flex", justifyContent: "center" }}>
                 <StateBadge state="declined" />
