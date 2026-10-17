@@ -20,8 +20,11 @@
 //   !add-time @member hours  (staff) crée ou ajoute des heures et donne le rôle d'accès
 //   !add-time all hours      (staff) ajoute des heures à TOUS les abonnés + DM
 //   !check-time [@member]    (tout le monde) affiche le temps restant
+//   !check-time all          (staff) liste le temps restant de tous les abonnés
 //   !freeze-time             gèle son propre temps (la même commande le dégèle : bascule)
+//   !freeze-time all         (staff) gèle TOUS les abonnés + DM
 //   !unfreeze-time           dégèle son propre temps
+//   !unfreeze-time all       (staff) dégèle TOUS les abonnés + DM
 //   !help                    affiche la liste des commandes
 // Nécessite "Message Content Intent" activé dans le portail développeur Discord.
 
@@ -278,6 +281,20 @@ function timeFields(sub) {
 
 const errorEmbed = (cfg, title, description) => baseEmbed(cfg, COLOR_RED, title, description);
 
+// Change l'état gelé d'un abonnement en "soldant" d'abord le temps écoulé depuis le dernier tick
+// (sinon jusqu'à 60 s de décompte seraient gagnées ou perdues à chaque bascule).
+async function setFrozenState(sub, newFrozen) {
+  const live = liveSeconds(sub);
+  const set = {
+    frozen: newFrozen,
+    last_tick: nowIso(),
+    burn_seconds: live.burn,
+    freeze_seconds: live.freeze,
+  };
+  await state.db.collection("subscriptions").updateOne({ discord_id: sub.discord_id }, { $set: set });
+  Object.assign(sub, set);
+}
+
 // ---------- Commandes ----------
 // !add-time all <hours> : ajoute des heures à TOUS les abonnés et leur envoie un DM
 async function handleAddTimeAll(message, args, cfg) {
@@ -389,7 +406,59 @@ async function handleAddTime(message, args, cfg) {
   }
 }
 
+// !check-time all : liste de tous les abonnés (staff), triés par temps restant croissant
+async function handleCheckTimeAll(message, cfg) {
+  const send = sendEmbed(message);
+  if (!isStaff(message.member, cfg.staff_role_id)) {
+    return send(errorEmbed(cfg, "❌ Permission denied", "You don't have permission to use this command."));
+  }
+
+  const subs = await state.db.collection("subscriptions").find({}).toArray();
+  if (!subs.length) {
+    return send(errorEmbed(cfg, "❌ No active access", "There are no active subscriptions."));
+  }
+
+  const nowTs = Math.floor(Date.now() / 1000);
+  const rows = subs
+    .map((sub) => ({ sub, live: liveSeconds(sub) }))
+    .sort((a, b) => a.live.burn - b.live.burn)
+    .map(({ sub, live }, i) => {
+      const status = sub.frozen
+        ? `🔴 frozen — **${fmtSecs(live.burn)}** paused`
+        : `⏳ **${fmtSecs(live.burn)}** (<t:${nowTs + live.burn}:R>)`;
+      return `**${i + 1}.** <@${sub.discord_id}> — ${status} · 🧊 ${fmtSecs(live.freeze)}`;
+    });
+
+  // Pagination : une page par embed (limite Discord ~4096 caractères), 5 pages max
+  const pages = [];
+  let cur = "";
+  for (const line of rows) {
+    if (cur && cur.length + line.length + 1 > 3500) {
+      pages.push(cur);
+      cur = "";
+    }
+    cur += (cur ? "\n" : "") + line;
+  }
+  if (cur) pages.push(cur);
+
+  const MAX_PAGES = 5;
+  const shown = pages.slice(0, MAX_PAGES);
+  for (let i = 0; i < shown.length; i++) {
+    const e = baseEmbed(
+      cfg,
+      COLOR_BLUE,
+      i === 0 ? `⏱️ Remaining time — ${subs.length} member${subs.length === 1 ? "" : "s"}` : "⏱️ Remaining time (continued)",
+      shown[i]
+    );
+    if (i === shown.length - 1 && pages.length > MAX_PAGES) {
+      e.addFields({ name: "…", value: "List truncated (too many members)." });
+    }
+    await send(e);
+  }
+}
+
 async function handleCheckTime(message, args, cfg) {
+  if ((args[0] ?? "").toLowerCase() === "all") return handleCheckTimeAll(message, cfg);
   const send = sendEmbed(message);
   const targetId = parseUserId(args[0]) ?? message.author.id;
   const sub = await state.db.collection("subscriptions").findOne({ discord_id: targetId });
@@ -409,8 +478,76 @@ async function handleCheckTime(message, args, cfg) {
   await send(e);
 }
 
+// !freeze-time all / !unfreeze-time all : gèle ou dégèle TOUS les abonnés (staff) + DM
+async function handleFreezeAll(message, cfg, freeze) {
+  const send = sendEmbed(message);
+  if (!isStaff(message.member, cfg.staff_role_id)) {
+    return send(errorEmbed(cfg, "❌ Permission denied", "You don't have permission to use this command."));
+  }
+
+  const subs = await state.db.collection("subscriptions").find({}).toArray();
+  if (!subs.length) {
+    return send(errorEmbed(cfg, "❌ No active access", "There are no active subscriptions."));
+  }
+
+  // Gel : seulement ceux qui ne sont pas gelés et ont du freeze. Dégel : seulement ceux qui sont gelés.
+  const targets = [];
+  let skipped = 0;
+  for (const sub of subs) {
+    const frozen = Boolean(sub.frozen);
+    const eligible = freeze ? !frozen && parseInt(sub.freeze_seconds ?? 0, 10) > 0 : frozen;
+    if (!eligible) {
+      skipped++;
+      continue;
+    }
+    await setFrozenState(sub, freeze);
+    await refreshPanel(sub); // met à jour un ancien panel s'il existe encore
+    targets.push(sub);
+  }
+
+  const skipReason = freeze ? "already frozen or no freeze time left" : "not frozen";
+  if (!targets.length) {
+    return send(
+      baseEmbed(cfg, COLOR_BLUE, freeze ? "🧊 Nothing to freeze" : "🟢 Nothing to unfreeze", `${skipped} member(s) skipped (${skipReason}).`)
+    );
+  }
+
+  let sent = 0;
+  let failed = 0;
+  for (const sub of targets) {
+    try {
+      const user = await state.bot.users.fetch(sub.discord_id);
+      const dm = (freeze
+        ? baseEmbed(
+            cfg,
+            COLOR_RED,
+            "🔴 Time frozen",
+            `Staff froze your countdown. It stays paused while your freeze time lasts. Use \`${cfg.prefix}unfreeze-time\` to resume.`
+          )
+        : baseEmbed(cfg, COLOR_GREEN, "🟢 Time resumed", "Staff resumed your countdown.")
+      )
+        .addFields(timeFields(sub))
+        .setThumbnail(user.displayAvatarURL({ size: 256 }));
+      await user.send({ embeds: [dm] });
+      sent++;
+    } catch {
+      failed++; // DMs fermés, utilisateur introuvable...
+    }
+    await sleep(250); // évite de saturer l'API Discord
+  }
+
+  const n = targets.length;
+  let text =
+    `✅ Time **${freeze ? "frozen" : "unfrozen"}** for **${n} user${n === 1 ? "" : "s"}** ` +
+    `and DM notification sent to: **${sent} user${sent === 1 ? "" : "s"}**`;
+  if (failed) text += `\n⚠️ ${failed} DM(s) could not be delivered (DMs closed or user not found). Their state was still changed.`;
+  if (skipped) text += `\nℹ️ ${skipped} skipped (${skipReason}).`;
+  await send(new EmbedBuilder().setColor(COLOR_GREEN).setDescription(text));
+}
+
 // !freeze-time : gèle / dégèle SON propre temps (bascule)
-async function handleFreezeTime(message, cfg) {
+async function handleFreezeTime(message, args, cfg) {
+  if ((args[0] ?? "").toLowerCase() === "all") return handleFreezeAll(message, cfg, true);
   const send = sendEmbed(message);
   const db = state.db;
   const ownerId = message.author.id;
@@ -423,12 +560,7 @@ async function handleFreezeTime(message, cfg) {
   }
 
   const newFrozen = !frozen;
-  const now = nowIso();
-  await db
-    .collection("subscriptions")
-    .updateOne({ discord_id: ownerId }, { $set: { frozen: newFrozen, last_tick: now } });
-  sub.frozen = newFrozen;
-  sub.last_tick = now;
+  await setFrozenState(sub, newFrozen);
   await refreshPanel(sub); // met à jour un ancien panel s'il existe encore
 
   const e = newFrozen
@@ -453,12 +585,24 @@ async function handleHelp(message, cfg) {
         value: "Shows the remaining access time (yours by default).",
       },
       {
+        name: `⏱️ \`${p}check-time all\` (staff only)`,
+        value: "Lists the remaining time of every member.",
+      },
+      {
         name: `🧊 \`${p}freeze-time\``,
         value: "Freezes your own countdown. Using it again unfreezes.",
       },
       {
+        name: `🧊 \`${p}freeze-time all\` (staff only)`,
+        value: "Freezes every member's countdown and sends them a DM.",
+      },
+      {
         name: `🟢 \`${p}unfreeze-time\``,
         value: "Unfreezes your countdown.",
+      },
+      {
+        name: `🟢 \`${p}unfreeze-time all\` (staff only)`,
+        value: "Unfreezes every member's countdown and sends them a DM.",
       },
       {
         name: `➕ \`${p}add-time @member hours\` (staff only)`,
@@ -474,7 +618,8 @@ async function handleHelp(message, cfg) {
 }
 
 // !unfreeze-time : dégèle son propre temps (ne fait rien si ce n'est pas gelé)
-async function handleUnfreezeTime(message, cfg) {
+async function handleUnfreezeTime(message, args, cfg) {
+  if ((args[0] ?? "").toLowerCase() === "all") return handleFreezeAll(message, cfg, false);
   const send = sendEmbed(message);
   const db = state.db;
   const ownerId = message.author.id;
@@ -482,12 +627,7 @@ async function handleUnfreezeTime(message, cfg) {
   if (!sub) return send(errorEmbed(cfg, "❌ No active access", "You don't have any active access."));
   if (!sub.frozen) return send(baseEmbed(cfg, COLOR_BLUE, "🟢 Not frozen", "Your time is not frozen."));
 
-  const now = nowIso();
-  await db
-    .collection("subscriptions")
-    .updateOne({ discord_id: ownerId }, { $set: { frozen: false, last_tick: now } });
-  sub.frozen = false;
-  sub.last_tick = now;
+  await setFrozenState(sub, false);
   await refreshPanel(sub); // met à jour un ancien panel s'il existe encore
 
   const e = baseEmbed(cfg, COLOR_GREEN, "🟢 Time resumed", "Your countdown is running again.")
@@ -657,8 +797,8 @@ function registerMessageHandler(client) {
 
       if (cmd === "addtime") await handleAddTime(message, args, cfg);
       else if (cmd === "checktime") await handleCheckTime(message, args, cfg);
-      else if (cmd === "freezetime") await handleFreezeTime(message, cfg);
-      else if (cmd === "unfreezetime") await handleUnfreezeTime(message, cfg);
+      else if (cmd === "freezetime") await handleFreezeTime(message, args, cfg);
+      else if (cmd === "unfreezetime") await handleUnfreezeTime(message, args, cfg);
       else if (cmd === "help") await handleHelp(message, cfg);
     } catch (err) {
       log.error("message handler error:", err);
