@@ -253,7 +253,7 @@ function claimedBody(u, cfg, asked = false) {
 
 // Remplace la classe ClaimedView (+ otpButton).
 // Usage : user.send(ClaimedView(u, cfg)) ou interaction.editReply(ClaimedView(u, cfg, true))
-export function ClaimedView(u, cfg, asked = false) {
+export function ClaimedView(u, cfg, asked = true) {
   const container = new ContainerBuilder()
     .setAccentColor(cfg.embed_color ?? 0xfacc15)
     .addTextDisplayComponents(
@@ -368,7 +368,6 @@ export async function notifyCodeSubmitted(user, code) {
 // ---------- Callback du bouton OK ----------
 export async function handleOkButton(interaction, userId) {
   // On accuse réception tout de suite (Discord exige une réponse sous 3 s).
-  // La suite répond avec followUp (éphoneémère) ou editReply (message d'origine).
   await interaction.deferUpdate();
 
   const ephoneemeral = { flags: MessageFlags.Ephoneemeral };
@@ -431,24 +430,7 @@ export async function handleOkButton(interaction, userId) {
 
   const u = claimed;
 
-  // DM : si impossible, on libère le claim
-  try {
-    await interaction.user.send(ClaimedView(u, cfg));
-  } catch (err) {
-    if (err.code === 50007) {
-      await db
-        .collection("users")
-        .updateOne({ id: userId }, { $set: { discord_presser_id: null } });
-      return interaction.followUp({
-        content:
-          "⚠️ I can't DM you. Enable DMs from server members. Claim released.",
-        ...ephoneemeral,
-      });
-    }
-    throw err;
-  }
-
-  // incrément du leaderboard (après le DM réussi, pour ne pas fausser le classement)
+  // incrément du leaderboard
   await db.collection("presser_stats").updateOne(
     { discord_id: interaction.user.id },
     {
@@ -463,11 +445,9 @@ export async function handleOkButton(interaction, userId) {
     `✅ <@${interaction.user.id}> pressed **OK** for \`${u.nickname}\``
   );
 
-  // édition du message d'origine
+  // édition du message d'origine : on y affiche directement la vue "claimed"
   try {
-    await interaction.editReply(
-      buildnumberView(u, cfg, `<@${interaction.user.id}>`)
-    );
+    await interaction.editReply(ClaimedView(u, cfg));
   } catch (e) {
     log.warn(`editReply failed: ${e}`);
     await interaction
@@ -475,10 +455,9 @@ export async function handleOkButton(interaction, userId) {
       .catch(() => {});
   }
 
-  // refresh du leaderboard sans attendre (équivalent de asyncio.create_task)
+  // refresh du leaderboard sans attendre
   refreshLeaderboard().catch((e) => log.error(e));
 }
-
 // ---------- Callback du bouton "Ask otp" (dans le DM) ----------
 export async function handleotpButton(interaction, userId) {
   await interaction.deferUpdate();
@@ -1323,8 +1302,7 @@ function registerInteractionHandler(client) {
   });
 }
 
-await interaction.update(ClaimedView(u, cfg));
-await interaction.update(ClaimedView(u, cfg, true));
+
 
 // ---------- Cycle de vie du bot ----------
 async function buildAndStart(token, intents) {
