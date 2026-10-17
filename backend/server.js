@@ -22,7 +22,6 @@ import {
   logAction,
   notifyNewRegistration,
   notifyotpReceived,
-  adminRemoveFromQueue,
   announceMaintenance,
   refreshLeaderboard,
   sendBroadcast,
@@ -617,7 +616,8 @@ api.post("/admin/queue/remove", ...perm("countries"), r(async (req) => {
   if (!COUNTRY_CODES.includes(country)) fail(400, "Invalid country");
   const result = await col("queue_entries").deleteOne({ user_id, country, status: "pending" });
   const removed = result.deletedCount > 0;
-  if (removed) adminRemoveFromQueue(user_id, country).catch(noErr("admin_remove_from_queue"));
+  // NOTE : la notification Discord de retrait de file (DM + reset du panel) n'existe
+  // plus côté bot.js (système d'abonnement/queue retiré, géré par un autre bot).
   return { ok: removed };
 }));
 
