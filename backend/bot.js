@@ -306,16 +306,10 @@ async function getChannel(id) {
 }
 
 // ---------- Logs ----------
+// Désactivé : plus aucun message n'est envoyé dans le salon logs. La fonction reste en
+// place (no-op) pour ne pas casser les appels existants ailleurs dans le fichier.
 export async function logAction(text) {
-  const cfg = await getConfig();
-  const chId = (cfg.logs_channel_id ?? "").trim();
-  if (!chId || !state.bot) return;
-  try {
-    const ch = await getChannel(chId);
-    await ch.send(text);
-  } catch (e) {
-    log.warn(`logAction failed: ${e}`);
-  }
+  return;
 }
 
 // ---------- Appelé par votre API HTTP après une inscription ----------
