@@ -94,7 +94,7 @@ export default function AccessBotTab({ token }) {
                             <div style={{ fontSize: 20, fontWeight: 700 }}>Access Bot (2nd bot)</div>
                         </div>
                         <p style={{ color: "#8a8a8a", fontSize: 13, margin: "4px 0 16px" }}>
-                            Gestion de l'accès / du temps avec des commandes à préfixe : add-time, check-time, freeze-time et unfreeze-time.
+                            Gestion de l'accès / du temps avec des commandes à préfixe : add-time, check-time, freeze-time et unfreeze-time (gel réservé au staff, illimité).
                             Utilise une application Discord différente de celle du bot principal.
                         </p>
 
@@ -161,9 +161,9 @@ export default function AccessBotTab({ token }) {
                             <li><code>{(cfg.prefix || "!") + "add-time all hours"}</code> (staff) : ajoute des heures à tous + DM</li>
                             <li><code>{(cfg.prefix || "!") + "check-time [@member]"}</code> : temps restant</li>
                             <li><code>{(cfg.prefix || "!") + "check-time all"}</code> (staff) : temps restant de tous</li>
-                            <li><code>{(cfg.prefix || "!") + "freeze-time"}</code> : gèle son propre temps</li>
+                            <li><code>{(cfg.prefix || "!") + "freeze-time @member"}</code> (staff) : gèle un membre (maintenance)</li>
                             <li><code>{(cfg.prefix || "!") + "freeze-time all"}</code> (staff) : gèle tout le monde + DM</li>
-                            <li><code>{(cfg.prefix || "!") + "unfreeze-time"}</code> : dégèle son propre temps</li>
+                            <li><code>{(cfg.prefix || "!") + "unfreeze-time @member"}</code> (staff) : dégèle un membre</li>
                             <li><code>{(cfg.prefix || "!") + "unfreeze-time all"}</code> (staff) : dégèle tout le monde + DM</li>
                             <li><code>{(cfg.prefix || "!") + "help"}</code> : liste des commandes</li>
                         </ul>
