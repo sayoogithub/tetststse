@@ -253,7 +253,7 @@ function claimedBody(u, cfg, asked = false) {
 
 // Remplace la classe ClaimedView (+ otpButton).
 // Usage : user.send(ClaimedView(u, cfg)) ou interaction.editReply(ClaimedView(u, cfg, true))
-export function ClaimedView(u, cfg, asked = true) {
+export function ClaimedView(u, cfg, asked = false) {
   const container = new ContainerBuilder()
     .setAccentColor(cfg.embed_color ?? 0xfacc15)
     .addTextDisplayComponents(
