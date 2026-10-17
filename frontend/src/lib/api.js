@@ -75,3 +75,12 @@ export const adminUpdateCountry = (t, code, patch) => client.put("/admin/countri
 // Queue admin
 export const adminGetQueues = (t) => client.get("/admin/queues", auth(t)).then(r => r.data);
 export const adminRemoveFromQueue = (t, userId, country) => client.post("/admin/queue/remove", { user_id: userId, country }, auth(t)).then(r => r.data);
+
+// Deuxieme bot
+
+// Access Bot (2nd bot)
+export const adminAccessBotConfig = (t) => client.get("/admin/access-bot/config", auth(t)).then(r => r.data);
+export const adminAccessBotSave = (t, patch) => client.put("/admin/access-bot/config", patch, auth(t)).then(r => r.data);
+export const adminAccessBotStatus = (t) => client.get("/admin/access-bot/status", auth(t)).then(r => r.data);
+export const adminAccessBotStart = (t) => client.post("/admin/access-bot/start", {}, auth(t)).then(r => r.data);
+export const adminAccessBotStop = (t) => client.post("/admin/access-bot/stop", {}, auth(t)).then(r => r.data);
