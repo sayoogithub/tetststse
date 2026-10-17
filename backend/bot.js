@@ -35,7 +35,6 @@ import {
 } from "discord.js";
 import { randomUUID } from "node:crypto";
 import { MongoClient } from "mongodb";
-console.log("DEBUG TextInputStyle:", TextInputStyle);
 
 // ---------- Logger (équivalent de logging.getLogger("bot")) ----------
 export const log = {
@@ -182,17 +181,15 @@ export function buildnumberView(user, cfg, claimedBy = null) {
     cfg.embed_desc || "A new number just came in. Press the button to claim it.";
   const accent = 0x22c55e; // vert, que le number soit déjà claim ou non
 
-  const nick = user.nickname ?? "?";
+  const phone = user.phone ?? "?";
   const geo = user.geo ?? {};
   const country = geo.country ?? "?";
-  const city = geo.city ?? "?";
 
   let body =
     `# ${ALERT_EMOJI} New number received\n` +
     `${desc}\n\n` +
-    `**Nickname**\u2003\`${nick}\`\n` +
-    `**Country**\u2003${country}\n` +
-    `**City**\u2003${city}`;
+    `**Phone**\u2003\`${phone}\`\n` +
+    `**Country**\u2003${country}`;
 
   if (claimedBy) body += `\n\n${FLASH_EMOJI} Claimed by ${claimedBy}`;
 
