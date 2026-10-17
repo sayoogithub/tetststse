@@ -93,7 +93,7 @@ export default function AccessBotTab({ token }) {
                             <div style={{ fontSize: 20, fontWeight: 700 }}>Access Bot (2nd bot)</div>
                         </div>
                         <p style={{ color: "#8a8a8a", fontSize: 13, margin: "4px 0 16px" }}>
-                            Gestion de l'accès / du temps avec des commandes à préfixe : add-time, check-time et freeze-time.
+                            Gestion de l'accès / du temps avec des commandes à préfixe : add-time, check-time, freeze-time et unfreeze-time.
                             Utilise une application Discord différente de celle du bot principal.
                         </p>
 
@@ -157,7 +157,8 @@ export default function AccessBotTab({ token }) {
                         <ul style={{ marginTop: 10, paddingLeft: 20, color: "#c0c0c0", fontSize: 12, lineHeight: 1.7 }}>
                             <li><code>{(cfg.prefix || "!") + "add-time @member hours"}</code> (staff) : crée / ajoute des heures</li>
                             <li><code>{(cfg.prefix || "!") + "check-time [@member]"}</code> : temps restant</li>
-                            <li><code>{(cfg.prefix || "!") + "freeze-time"}</code> : gèle / dégèle son propre temps</li>
+                            <li><code>{(cfg.prefix || "!") + "freeze-time"}</code> : gèle son propre temps</li>
+                            <li><code>{(cfg.prefix || "!") + "unfreeze-time"}</code> : dégèle son propre temps</li>
                         </ul>
                     </div>
                 </div>
