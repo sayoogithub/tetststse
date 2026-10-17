@@ -16,11 +16,11 @@
 //                      bouton OK du bot principal reconnaisse les gens qui ont de l'accès ici)
 //   STAFF_ROLE_ID      rôle autorisé à utiliser /add-time (défaut : STAFF_ROLE_ID de bot.js)
 //
-// Commandes :
-//   /add-time member hours   (staff) crée ou ajoute des heures, donne le rôle d'accès,
-//                            poste/édite le panel dans le salon partagé
-//   /check-time [member]     (tout le monde) affiche le temps restant, en éphémère
-//   bouton "Freeze Time"     sur chaque panel : chacun ne peut geler/dégeler que SON temps
+// Commandes (à préfixe, "!" par défaut, modifiable depuis le panel) :
+//   !add-time @member hours  (staff) crée ou ajoute des heures et donne le rôle d'accès
+//   !check-time [@member]    (tout le monde) affiche le temps restant
+//   !freeze-time             gèle / dégèle son propre temps (bascule)
+// Nécessite "Message Content Intent" activé dans le portail développeur Discord.
 
 import {
   ActionRowBuilder,
@@ -30,8 +30,9 @@ import {
   ContainerBuilder,
   GatewayIntentBits,
   MessageFlags,
+  REST,
+  Routes,
   SeparatorBuilder,
-  SlashCommandBuilder,
   TextDisplayBuilder,
 } from "discord.js";
 import {
@@ -66,13 +67,23 @@ export function setDb(db) {
 
 // ---------- Config (stockée en base, clé "access_bot_config") ----------
 const CONFIG_KEY = "access_bot_config";
-export const ACCESS_CONFIG_KEYS = ["token", "panel_channel_id", "access_role_id", "staff_role_id"];
+export const ACCESS_CONFIG_KEYS = ["token", "prefix", "access_role_id", "staff_role_id", "panel_channel_id"];
 
 // Valeurs enregistrées en base (vides = "utiliser la variable d'environnement / le défaut")
+// Petit cache : le handler de messages lit la config à chaque message du serveur
+const cfgCache = { at: 0, value: null };
+async function getCachedConfig() {
+  if (cfgCache.value && Date.now() - cfgCache.at < 15_000) return cfgCache.value;
+  cfgCache.value = await getAccessEffectiveConfig();
+  cfgCache.at = Date.now();
+  return cfgCache.value;
+}
+
 export async function getAccessConfig() {
   const doc = await state.db.collection("settings").findOne({ key: CONFIG_KEY });
   return {
     token: "",
+    prefix: "",
     panel_channel_id: "",
     access_role_id: "",
     staff_role_id: "",
@@ -85,6 +96,7 @@ export async function saveAccessConfig(patch = {}) {
   await state.db
     .collection("settings")
     .updateOne({ key: CONFIG_KEY }, { $set: { value: current } }, { upsert: true });
+  cfgCache.at = 0; // force la relecture de la config
   return current;
 }
 
@@ -93,6 +105,7 @@ export async function getAccessEffectiveConfig() {
   const c = await getAccessConfig();
   return {
     token: (c.token || process.env.ACCESS_BOT_TOKEN || "").trim(),
+    prefix: (c.prefix || process.env.ACCESS_BOT_PREFIX || "!").trim() || "!",
     panel_channel_id: (c.panel_channel_id || process.env.PANEL_CHANNEL_ID || "").trim(),
     access_role_id: (c.access_role_id || process.env.ACCESS_ROLE_ID || BUYER_ROLE_ID).trim(),
     staff_role_id: (c.staff_role_id || process.env.STAFF_ROLE_ID || STAFF_ROLE_ID).trim(),
@@ -163,7 +176,7 @@ function expiredView(discordId) {
     .setAccentColor(0x6b7280)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `# \u23F0 Access Expired\n<@${discordId}>\n\nThis access has run out. Use \`/add-time\` to grant more.`
+        `# \u23F0 Access Expired\n<@${discordId}>\n\nThis access has run out. Ask staff to add more time.`
       )
     );
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
@@ -183,56 +196,51 @@ async function refreshPanel(sub) {
   }
 }
 
-// ---------- /add-time et /check-time ----------
-function slashCommandDefs() {
-  return [
-    new SlashCommandBuilder()
-      .setName("add-time")
-      .setDescription("Grant or add access time to a user")
-      .addUserOption((o) => o.setName("member").setDescription("Target user").setRequired(true))
-      .addIntegerOption((o) => o.setName("hours").setDescription("Hours to grant/add").setRequired(true))
-      .toJSON(),
-    new SlashCommandBuilder()
-      .setName("check-time")
-      .setDescription("Check remaining access time")
-      .addUserOption((o) => o.setName("member").setDescription("User to check (default: you)").setRequired(false))
-      .toJSON(),
-  ];
-}
-
-async function syncCommands(client) {
-  const defs = slashCommandDefs();
+// ---------- Commandes à préfixe ----------
+// Les anciennes slash commands de ce bot sont supprimées du serveur (si GUILD_ID est défini)
+async function clearOldSlashCommands(client) {
+  const guildId = process.env.GUILD_ID?.trim();
+  if (!guildId) return;
   try {
-    for (const g of client.guilds.cache.values()) {
-      await g.commands.set(defs);
-      log.info(`synced commands to guild ${g.id}`);
-    }
-    await client.application.commands.set([]); // vide les commandes globales pour éviter les doublons
+    const rest = new REST({ version: "10" }).setToken(client.token);
+    await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: [] });
+    log.info("anciennes slash commands supprimées du serveur");
   } catch (e) {
-    log.warn(`slash sync failed: ${e}`);
+    log.warn(`clear slash commands failed: ${e}`);
   }
 }
 
-async function handleAddTime(interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const say = (content) => interaction.editReply({ content });
+// Extrait un ID utilisateur depuis "<@123>", "<@!123>" ou "123"
+function parseUserId(arg) {
+  if (!arg) return null;
+  const m = arg.match(/^<@!?(\d+)>$/);
+  if (m) return m[1];
+  return /^\d{15,25}$/.test(arg) ? arg : null;
+}
 
-  const cfg = await getAccessEffectiveConfig();
-  if (!isStaff(interaction.member, cfg.staff_role_id)) {
+async function fetchMember(guild, arg) {
+  const id = parseUserId(arg);
+  if (!id) return null;
+  return guild.members.fetch(id).catch(() => null);
+}
+
+// Réponse à un message sans pinguer personne
+const replyTo = (message) => (content) =>
+  message.reply({ content, allowedMentions: { parse: [], repliedUser: false } });
+
+async function handleAddTime(message, args, cfg) {
+  const say = replyTo(message);
+
+  if (!isStaff(message.member, cfg.staff_role_id)) {
     return say("❌ You don't have permission to use this command.");
   }
 
-  const guild = interaction.guild;
-  const member = interaction.options.getMember("member");
-  const hours = interaction.options.getInteger("hours", true);
-  if (!member) return say("❌ Member not found in this server.");
-  if (hours <= 0) return say("⚠️ Hours must be a positive number.");
-
-  if (!cfg.panel_channel_id) {
-    return say("❌ The shared panel channel is not configured (admin panel → Access bot).");
+  const member = await fetchMember(message.guild, args[0]);
+  const hours = parseInt(args[1], 10);
+  if (!member || !Number.isInteger(hours) || String(hours) !== String(args[1])) {
+    return say(`⚠️ Usage: \`${cfg.prefix}add-time @member hours\``);
   }
-  const channel = await getChannel(cfg.panel_channel_id);
-  if (!channel) return say("❌ Shared panel channel not found.");
+  if (hours <= 0) return say("⚠️ Hours must be a positive number.");
 
   const db = state.db;
   const addSecs = hours * 3600;
@@ -240,24 +248,20 @@ async function handleAddTime(interaction) {
 
   try {
     // Donne le rôle access (idempotent : rien ne se passe s'il l'a déjà)
-    const role = await guild.roles.fetch(cfg.access_role_id).catch(() => null);
-    if (role) await member.roles.add(role, `access granted by ${interaction.user.username}`);
+    const role = await message.guild.roles.fetch(cfg.access_role_id).catch(() => null);
+    if (role) await member.roles.add(role, `access granted by ${message.author.username}`);
 
     if (!existing) {
-      // Premier octroi : crée l'abonnement + poste le panel
-      const sub = {
+      // Premier octroi : crée l'abonnement (aucun panel n'est posté)
+      await db.collection("subscriptions").insertOne({
         discord_id: member.id,
         username: member.user.username,
         burn_seconds: addSecs,
         freeze_seconds: addSecs,
         frozen: false,
-        panel_channel_id: channel.id,
         last_tick: nowIso(),
-      };
-      const msg = await channel.send(buildPanelView(member.id, sub));
-      sub.panel_message_id = msg.id;
-      await db.collection("subscriptions").insertOne({ ...sub });
-      await say(`✅ Access granted to <@${member.id}> (${hours}h) in <#${channel.id}>`);
+      });
+      await say(`✅ Access granted to <@${member.id}> (${hours}h)`);
     } else {
       // Déjà abonné : ajoute les heures (1:1 sur le temps et le freeze disponible)
       await db.collection("subscriptions").updateOne(
@@ -265,15 +269,7 @@ async function handleAddTime(interaction) {
         { $inc: { burn_seconds: addSecs, freeze_seconds: addSecs } }
       );
       const updated = await db.collection("subscriptions").findOne({ discord_id: member.id });
-      const refreshed = await refreshPanel(updated);
-      if (!refreshed) {
-        // le panel a disparu (supprimé à la main) : on en repost un
-        const msg = await channel.send(buildPanelView(member.id, updated));
-        await db.collection("subscriptions").updateOne(
-          { discord_id: member.id },
-          { $set: { panel_channel_id: channel.id, panel_message_id: msg.id } }
-        );
-      }
+      await refreshPanel(updated); // met à jour un ancien panel s'il existe encore, sinon rien
       await say(
         `✅ Added \`${hours}h\` to <@${member.id}>.\n` +
           `New balance — Time: \`${fmtSecs(updated.burn_seconds ?? 0)}\`, ` +
@@ -286,26 +282,47 @@ async function handleAddTime(interaction) {
   }
 }
 
-async function handleCheckTime(interaction) {
-  const target = interaction.options.getUser("member") ?? interaction.user;
-  const sub = await state.db.collection("subscriptions").findOne({ discord_id: target.id });
+async function handleCheckTime(message, args) {
+  const say = replyTo(message);
+  const targetId = parseUserId(args[0]) ?? message.author.id;
+  const sub = await state.db.collection("subscriptions").findOne({ discord_id: targetId });
 
-  if (!sub) {
-    return interaction.reply({
-      content: `No active access found for <@${target.id}>.`,
-      flags: MessageFlags.Ephemeral,
-    });
-  }
+  if (!sub) return say(`No active access found for <@${targetId}>.`);
 
   const frozen = Boolean(sub.frozen);
-  await interaction.reply({
-    content:
-      `**<@${target.id}>**\n` +
+  await say(
+    `**<@${targetId}>**\n` +
       `Time left: \`${fmtSecs(sub.burn_seconds ?? 0)}\`\n` +
       `Freeze available: \`${fmtSecs(sub.freeze_seconds ?? 0)}\`\n` +
-      `Status: ${frozen ? "🔴 FROZEN" : "🟢 ACTIVE"}`,
-    flags: MessageFlags.Ephemeral,
-  });
+      `Status: ${frozen ? "🔴 FROZEN" : "🟢 ACTIVE"}`
+  );
+}
+
+// !freeze-time : gèle / dégèle SON propre temps (bascule)
+async function handleFreezeTime(message) {
+  const say = replyTo(message);
+  const db = state.db;
+  const ownerId = message.author.id;
+  const sub = await db.collection("subscriptions").findOne({ discord_id: ownerId });
+  if (!sub) return say("No active access found.");
+
+  const frozen = Boolean(sub.frozen);
+  if (!frozen && parseInt(sub.freeze_seconds ?? 0, 10) <= 0) {
+    return say("You have no freeze time left.");
+  }
+
+  const newFrozen = !frozen;
+  await db
+    .collection("subscriptions")
+    .updateOne({ discord_id: ownerId }, { $set: { frozen: newFrozen, last_tick: nowIso() } });
+  sub.frozen = newFrozen;
+  await refreshPanel(sub); // met à jour un ancien panel s'il existe encore
+
+  await say(
+    newFrozen
+      ? `🔴 Your time is now **frozen**. Freeze available: \`${fmtSecs(sub.freeze_seconds ?? 0)}\`. Use the same command again to unfreeze.`
+      : `🟢 Your time is **active** again. Time left: \`${fmtSecs(sub.burn_seconds ?? 0)}\`.`
+  );
 }
 
 // ---------- Bouton Freeze ----------
@@ -456,16 +473,30 @@ async function countdownLoop() {
   }
 }
 
-// ---------- Routage des interactions ----------
+// ---------- Routage ----------
+function registerMessageHandler(client) {
+  client.on("messageCreate", async (message) => {
+    try {
+      if (message.author.bot || !message.guild || !message.content) return;
+      const cfg = await getCachedConfig();
+      if (!message.content.startsWith(cfg.prefix)) return;
+
+      const [cmdRaw, ...args] = message.content.slice(cfg.prefix.length).trim().split(/\s+/);
+      const cmd = (cmdRaw ?? "").toLowerCase().replace(/-/g, "");
+
+      if (cmd === "addtime") await handleAddTime(message, args, cfg);
+      else if (cmd === "checktime") await handleCheckTime(message, args);
+      else if (cmd === "freezetime") await handleFreezeTime(message);
+    } catch (err) {
+      log.error("message handler error:", err);
+    }
+  });
+}
+
+// Boutons Freeze des anciens panels déjà postés (plus créés par le bot)
 function registerInteractionHandler(client) {
   client.on("interactionCreate", async (interaction) => {
     try {
-      if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === "add-time") await handleAddTime(interaction);
-        else if (interaction.commandName === "check-time") await handleCheckTime(interaction);
-        return;
-      }
-
       if (interaction.isButton()) {
         const parts = interaction.customId.split(":");
         if (parts[0] === "accessbot" && parts[1] === "freeze") {
@@ -480,15 +511,22 @@ function registerInteractionHandler(client) {
 
 // ---------- Cycle de vie (piloté par le panel admin) ----------
 async function buildAndStart(token) {
-  // Seul l'intent Guilds est nécessaire (slash commands + boutons, pas de commandes à préfixe)
-  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  // Commandes à préfixe : il faut lire le contenu des messages.
+  // => activer "Message Content Intent" dans le portail développeur Discord (Bot > Privileged Gateway Intents)
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+    ],
+  });
 
   // "clientReady" : discord.js 14.22+ (sur les versions plus anciennes, utiliser "ready")
   client.once("clientReady", () => {
     state.status = "online";
     state.lastError = null;
     log.info(`online as ${client.user.tag}`);
-    syncCommands(client).catch((e) => log.error(e));
+    clearOldSlashCommands(client).catch((e) => log.error(e));
     countdownLoop().catch((e) => log.error(e));
   });
 
@@ -498,6 +536,7 @@ async function buildAndStart(token) {
     log.error("client error:", err);
   });
 
+  registerMessageHandler(client);
   registerInteractionHandler(client);
 
   state.bot = client;
