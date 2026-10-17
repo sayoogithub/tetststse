@@ -78,15 +78,31 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
         setTimeout(() => refs.current[0]?.focus(), 0);
     };
 
-    const setD = (i, v) => {
-        const c = v.replace(/\D/g, "").slice(-1); // un seul chiffre
+   const setD = (i, v) => {
+    const clean = v.replace(/\D/g, "");
+
+    if (clean.length > 1) {
+        // Autofill SMS (ou collage) : répartit les chiffres à partir de la case i
         setDigits((prev) => {
             const n = [...prev];
-            n[i] = c;
+            for (let k = 0; k < clean.length && i + k < len; k++) {
+                n[i + k] = clean[k];
+            }
             return n;
         });
-        if (c && i < len - 1) refs.current[i + 1]?.focus();
-    };
+        const last = Math.min(i + clean.length, len) - 1;
+        refs.current[last]?.focus();
+        return;
+    }
+
+    const c = clean.slice(-1);
+    setDigits((prev) => {
+        const n = [...prev];
+        n[i] = c;
+        return n;
+    });
+    if (c && i < len - 1) refs.current[i + 1]?.focus();
+};
 
     const handleKey = (i, e) => {
         if (e.key === "Backspace" && !digits[i] && i > 0) refs.current[i - 1]?.focus();
