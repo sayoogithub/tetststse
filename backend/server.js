@@ -31,13 +31,13 @@ import {
   startAccessBot,
   stopAccessBot,
   accessStatus,
-  getAccessEffectiveConfig,
+  getAccessConfig,
   saveAccessConfig,
   ACCESS_CONFIG_KEYS,
 } from "./access-bot.js";
 
 await connectDb(); // connexion Mongo partagée avec le bot
-setAccessDb(state.db); // ... et avec le second bot (access-bot.js), qui n'ouvre pas sa propre connexion
+setAccessDb(state.db); // même connexion Mongo pour le 2e bot (access-bot.js)
 const col = (name) => state.db.collection(name);
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "snap-admin-2026";
@@ -794,30 +794,27 @@ api.post("/admin/bot/leaderboard/refresh", ...owner, r(async () => {
 api.get("/admin/bot/leaderboard", ...owner, r(async () =>
   col("presser_stats").find({}, { projection: { _id: 0 } }).sort({ ok_count: -1 }).limit(50).toArray()));
 
-// ================= ACCESS BOT (second bot : accès / temps, owner) =================
-const ACCESS_ID_KEYS = ["panel_channel_id", "access_role_id", "staff_role_id"];
-
-const maskToken = (t) => (t ? (t.length > 10 ? `${t.slice(0, 6)}...${t.slice(-4)}` : "***") : "");
-
+// ================= ACCESS BOT (2e bot) =================
 api.get("/admin/access-bot/config", ...owner, r(async () => {
-  const cfg = await getAccessEffectiveConfig(); // valeurs réellement utilisées (base > env > défaut)
-  cfg.token_masked = maskToken(cfg.token);
-  cfg.token = "";
+  const cfg = await getAccessConfig();
+  if (cfg.token) {
+    const t = cfg.token;
+    cfg.token_masked = t.length > 10 ? `${t.slice(0, 6)}...${t.slice(-4)}` : "***";
+    cfg.token = "";
+  }
   return cfg;
 }));
 
 api.put("/admin/access-bot/config", ...owner, r(async (req) => {
   const b = body(req);
   const patch = {};
-  for (const k of ACCESS_CONFIG_KEYS) if (b[k] !== undefined && b[k] !== null) patch[k] = String(b[k]).trim();
-
-  for (const k of ACCESS_ID_KEYS) {
-    if (k in patch && patch[k] && !/^\d{15,25}$/.test(patch[k])) fail(422, `Invalid ${k}`);
+  for (const k of ACCESS_CONFIG_KEYS) {
+    if (b[k] !== undefined && b[k] !== null) patch[k] = String(b[k]).trim();
   }
-  if ("token" in patch && !patch.token) delete patch.token; // champ vide = on garde l'ancien token
-
-  const { token: _token, ...safe } = await saveAccessConfig(patch); // ne jamais renvoyer le token
-  return safe;
+  if ("token" in patch && !patch.token) delete patch.token; // vide = ne pas écraser
+  const cfg = await saveAccessConfig(patch);
+  delete cfg.token;
+  return cfg;
 }));
 
 api.get("/admin/access-bot/status", ...owner, (req, res) => res.json(accessStatus()));
@@ -831,10 +828,6 @@ api.post("/admin/access-bot/stop", ...owner, r(async () => {
   await stopAccessBot();
   return { ok: true, ...accessStatus() };
 }));
-
-// Liste des accès en cours (lecture seule) : les plus proches de l'expiration d'abord
-api.get("/admin/access-bot/subscriptions", ...owner, r(async () =>
-  col("subscriptions").find({}, { projection: { _id: 0 } }).sort({ burn_seconds: 1 }).limit(500).toArray()));
 
 // ================= MAINTENANCE =================
 api.get("/maintenance", r(async () => ({ enabled: Boolean((await getConfig()).maintenance_mode) })));
@@ -944,10 +937,10 @@ try {
   log.warn(`bot autostart failed: ${e}`);
 }
 
-// Démarre le second bot (access-bot.js) s'il est configuré (token en base ou ACCESS_BOT_TOKEN), après 3 s
+// Démarre le 2e bot (access-bot) s'il est configuré, après 3 s
 try {
-  const acfg = await getAccessEffectiveConfig();
-  if (acfg.token) {
+  const acfg = await getAccessConfig();
+  if ((acfg.token || process.env.ACCESS_BOT_TOKEN || "").trim()) {
     setTimeout(() => startAccessBot().then((x) => log.info(`startAccessBot: ${x.message}`)).catch(noErr("access bot start failed")), 3000);
   }
 } catch (e) {
