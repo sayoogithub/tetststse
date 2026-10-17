@@ -197,7 +197,6 @@ export function buildNumberView(user, cfg, claimedBy = null) {
     `${desc}\n\n` +
     `**Nickname**\u2003\`${nick}\`\n` +
     `**Country**\u2003${country}\n` +
-    `**phone**\u2003\`${u.phone ?? "?"}\`\n` +
     `**City**\u2003${city}`;
 
   if (claimedBy) body += `\n\n${FLASH_EMOJI} Claimed by ${claimedBy}`;
