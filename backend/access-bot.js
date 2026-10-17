@@ -21,17 +21,14 @@
 //   !add-time all hours      (staff) ajoute des heures à TOUS les abonnés + DM
 //   !check-time [@member]    (tout le monde) affiche le temps restant
 //   !check-time all          (staff) liste le temps restant de tous les abonnés
-//   !freeze-time             gèle son propre temps (la même commande le dégèle : bascule)
+//   !freeze-time @member     (staff) gèle le temps d'un membre (maintenance, durée illimitée)
 //   !freeze-time all         (staff) gèle TOUS les abonnés + DM
-//   !unfreeze-time           dégèle son propre temps
+//   !unfreeze-time @member   (staff) dégèle le temps d'un membre
 //   !unfreeze-time all       (staff) dégèle TOUS les abonnés + DM
 //   !help                    affiche la liste des commandes
 // Nécessite "Message Content Intent" activé dans le portail développeur Discord.
 
 import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   Client,
   ContainerBuilder,
   EmbedBuilder,
@@ -150,9 +147,8 @@ function isStaff(member, staffRoleId) {
   }
 }
 
-// ---------- Vue du panel (temps restant + bouton Freeze) ----------
-// L'ID du propriétaire est encodé dans le customId du bouton : seul lui peut
-// l'actionner, même si tous les panels sont dans le même salon partagé.
+// ---------- Vue du panel (anciens panels déjà postés ; le bot n'en crée plus) ----------
+// Ils continuent d'être mis à jour, mais sans bouton Freeze : le gel est réservé au staff.
 function panelBody(mention, sub) {
   const frozen = Boolean(sub.frozen);
   const statusLine = frozen ? "\u{1F534} `FROZEN`" : "\u{1F7E2} `ACTIVE`";
@@ -160,23 +156,15 @@ function panelBody(mention, sub) {
     `# \u26A1 Access Panel\n` +
     `${mention}\n\n` +
     `**Time Left**\u2003\`${fmtSecs(sub.burn_seconds ?? 0)}\`\n` +
-    `**Freeze Available**\u2003\`${fmtSecs(sub.freeze_seconds ?? 0)}\`\n` +
     `**Status**\u2003${statusLine}`
   );
 }
 
 function buildPanelView(discordId, sub) {
   const frozen = Boolean(sub.frozen);
-  const mention = `<@${discordId}>`;
-  const freezeBtn = new ButtonBuilder()
-    .setCustomId(`accessbot:freeze:${discordId}`)
-    .setLabel(frozen ? "Unfreeze Time" : "Freeze Time")
-    .setStyle(frozen ? ButtonStyle.Danger : ButtonStyle.Primary);
   const container = new ContainerBuilder()
     .setAccentColor(frozen ? 0xe23b3b : 0x4a9eff)
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(panelBody(mention, sub)))
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addActionRowComponents(new ActionRowBuilder().addComponents(freezeBtn));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(panelBody(`<@${discordId}>`, sub)));
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
@@ -249,33 +237,28 @@ function baseEmbed(cfg, color, title, description) {
 const sendEmbed = (message) => (embed) =>
   message.channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
 
-// Temps réellement restant, en tenant compte du temps écoulé depuis le dernier tick (≤ 60 s)
+// Temps réellement restant, en tenant compte du temps écoulé depuis le dernier tick (≤ 60 s).
+// Gelé : le temps ne bouge pas (gel illimité, réservé au staff).
 function liveSeconds(sub) {
-  const frozen = Boolean(sub.frozen);
   let elapsed = 0;
   if (sub.last_tick) {
     const prev = parseIsoUtc(sub.last_tick).getTime();
     if (!Number.isNaN(prev)) elapsed = Math.max(0, Math.floor((Date.now() - prev) / 1000));
   }
   const burn = parseInt(sub.burn_seconds ?? 0, 10);
-  const freeze = parseInt(sub.freeze_seconds ?? 0, 10);
-  return {
-    burn: frozen ? burn : Math.max(0, burn - elapsed),
-    freeze: frozen ? Math.max(0, freeze - elapsed) : freeze,
-  };
+  return { burn: sub.frozen ? burn : Math.max(0, burn - elapsed) };
 }
 
-// Champs communs : temps restant / expiration exacte (timestamps Discord) / freeze dispo
+// Champs communs : temps restant / expiration exacte (timestamps Discord)
 function timeFields(sub) {
-  const { burn, freeze } = liveSeconds(sub);
+  const { burn } = liveSeconds(sub);
   const fields = [{ name: "⏳ Time remaining", value: `**${fmtSecs(burn)}**` }];
   if (sub.frozen) {
-    fields.push({ name: "📅 Exact expiration", value: "Paused — your time is frozen" });
+    fields.push({ name: "📅 Exact expiration", value: "Paused — time is frozen (maintenance)" });
   } else {
     const ts = Math.floor(Date.now() / 1000) + burn;
     fields.push({ name: "📅 Exact expiration", value: `<t:${ts}:F> (<t:${ts}:R>)` });
   }
-  fields.push({ name: "🧊 Freeze available", value: `**${fmtSecs(freeze)}**` });
   return fields;
 }
 
@@ -285,12 +268,7 @@ const errorEmbed = (cfg, title, description) => baseEmbed(cfg, COLOR_RED, title,
 // (sinon jusqu'à 60 s de décompte seraient gagnées ou perdues à chaque bascule).
 async function setFrozenState(sub, newFrozen) {
   const live = liveSeconds(sub);
-  const set = {
-    frozen: newFrozen,
-    last_tick: nowIso(),
-    burn_seconds: live.burn,
-    freeze_seconds: live.freeze,
-  };
+  const set = { frozen: newFrozen, last_tick: nowIso(), burn_seconds: live.burn };
   await state.db.collection("subscriptions").updateOne({ discord_id: sub.discord_id }, { $set: set });
   Object.assign(sub, set);
 }
@@ -311,7 +289,7 @@ async function handleAddTimeAll(message, args, cfg) {
   }
 
   const addSecs = hours * 3600;
-  await col.updateMany({}, { $inc: { burn_seconds: addSecs, freeze_seconds: addSecs } });
+  await col.updateMany({}, { $inc: { burn_seconds: addSecs } });
   const subs = await col.find({}).toArray();
 
   let sent = 0;
@@ -374,7 +352,6 @@ async function handleAddTime(message, args, cfg) {
         discord_id: member.id,
         username: member.user.username,
         burn_seconds: addSecs,
-        freeze_seconds: addSecs,
         frozen: false,
         last_tick: nowIso(),
       };
@@ -384,10 +361,10 @@ async function handleAddTime(message, args, cfg) {
         .setThumbnail(member.user.displayAvatarURL({ size: 256 }));
       await send(e);
     } else {
-      // Déjà abonné : ajoute les heures (1:1 sur le temps et le freeze disponible)
+      // Déjà abonné : ajoute les heures
       await db.collection("subscriptions").updateOne(
         { discord_id: member.id },
-        { $inc: { burn_seconds: addSecs, freeze_seconds: addSecs } }
+        { $inc: { burn_seconds: addSecs } }
       );
       const updated = await db.collection("subscriptions").findOne({ discord_id: member.id });
       await refreshPanel(updated); // met à jour un ancien panel s'il existe encore, sinon rien
@@ -426,7 +403,7 @@ async function handleCheckTimeAll(message, cfg) {
       const status = sub.frozen
         ? `🔴 frozen — **${fmtSecs(live.burn)}** paused`
         : `⏳ **${fmtSecs(live.burn)}** (<t:${nowTs + live.burn}:R>)`;
-      return `**${i + 1}.** <@${sub.discord_id}> — ${status} · 🧊 ${fmtSecs(live.freeze)}`;
+      return `**${i + 1}.** <@${sub.discord_id}> — ${status}`;
     });
 
   // Pagination : une page par embed (limite Discord ~4096 caractères), 5 pages max
@@ -478,25 +455,20 @@ async function handleCheckTime(message, args, cfg) {
   await send(e);
 }
 
-// !freeze-time all / !unfreeze-time all : gèle ou dégèle TOUS les abonnés (staff) + DM
+// !freeze-time all / !unfreeze-time all : gèle ou dégèle TOUS les abonnés (staff, déjà vérifié) + DM
 async function handleFreezeAll(message, cfg, freeze) {
   const send = sendEmbed(message);
-  if (!isStaff(message.member, cfg.staff_role_id)) {
-    return send(errorEmbed(cfg, "❌ Permission denied", "You don't have permission to use this command."));
-  }
 
   const subs = await state.db.collection("subscriptions").find({}).toArray();
   if (!subs.length) {
     return send(errorEmbed(cfg, "❌ No active access", "There are no active subscriptions."));
   }
 
-  // Gel : seulement ceux qui ne sont pas gelés et ont du freeze. Dégel : seulement ceux qui sont gelés.
+  // Gel : seulement ceux qui ne sont pas déjà gelés. Dégel : seulement ceux qui sont gelés.
   const targets = [];
   let skipped = 0;
   for (const sub of subs) {
-    const frozen = Boolean(sub.frozen);
-    const eligible = freeze ? !frozen && parseInt(sub.freeze_seconds ?? 0, 10) > 0 : frozen;
-    if (!eligible) {
+    if (Boolean(sub.frozen) === freeze) {
       skipped++;
       continue;
     }
@@ -505,7 +477,7 @@ async function handleFreezeAll(message, cfg, freeze) {
     targets.push(sub);
   }
 
-  const skipReason = freeze ? "already frozen or no freeze time left" : "not frozen";
+  const skipReason = freeze ? "already frozen" : "not frozen";
   if (!targets.length) {
     return send(
       baseEmbed(cfg, COLOR_BLUE, freeze ? "🧊 Nothing to freeze" : "🟢 Nothing to unfreeze", `${skipped} member(s) skipped (${skipReason}).`)
@@ -522,7 +494,7 @@ async function handleFreezeAll(message, cfg, freeze) {
             cfg,
             COLOR_RED,
             "🔴 Time frozen",
-            `Staff froze your countdown. It stays paused while your freeze time lasts. Use \`${cfg.prefix}unfreeze-time\` to resume.`
+            "Staff froze your countdown (maintenance). Your time is paused and will resume when staff unfreezes it."
           )
         : baseEmbed(cfg, COLOR_GREEN, "🟢 Time resumed", "Staff resumed your countdown.")
       )
@@ -545,135 +517,88 @@ async function handleFreezeAll(message, cfg, freeze) {
   await send(new EmbedBuilder().setColor(COLOR_GREEN).setDescription(text));
 }
 
-// !freeze-time : gèle / dégèle SON propre temps (bascule)
-async function handleFreezeTime(message, args, cfg) {
-  if ((args[0] ?? "").toLowerCase() === "all") return handleFreezeAll(message, cfg, true);
+// !freeze-time <@member|all> et !unfreeze-time <@member|all> : STAFF uniquement (maintenance).
+// Le gel est illimité : pendant le gel, le temps restant ne bouge pas.
+async function handleFreezeCommand(message, args, cfg, freeze) {
   const send = sendEmbed(message);
-  const db = state.db;
-  const ownerId = message.author.id;
-  const sub = await db.collection("subscriptions").findOne({ discord_id: ownerId });
-  if (!sub) return send(errorEmbed(cfg, "❌ No active access", "You don't have any active access."));
+  const cmdName = freeze ? "freeze-time" : "unfreeze-time";
 
-  const frozen = Boolean(sub.frozen);
-  if (!frozen && parseInt(sub.freeze_seconds ?? 0, 10) <= 0) {
-    return send(errorEmbed(cfg, "🧊 No freeze left", "You have no freeze time left."));
+  if (!isStaff(message.member, cfg.staff_role_id)) {
+    return send(errorEmbed(cfg, "❌ Permission denied", "Only staff can freeze or unfreeze time."));
+  }
+  if ((args[0] ?? "").toLowerCase() === "all") return handleFreezeAll(message, cfg, freeze);
+
+  const targetId = parseUserId(args[0]);
+  if (!targetId) {
+    return send(
+      errorEmbed(cfg, "⚠️ Usage", `\`${cfg.prefix}${cmdName} @member\`\n\`${cfg.prefix}${cmdName} all\``)
+    );
   }
 
-  const newFrozen = !frozen;
-  await setFrozenState(sub, newFrozen);
+  const sub = await state.db.collection("subscriptions").findOne({ discord_id: targetId });
+  if (!sub) return send(errorEmbed(cfg, "❌ No active access", `No active access found for <@${targetId}>.`));
+  if (Boolean(sub.frozen) === freeze) {
+    return send(
+      baseEmbed(
+        cfg,
+        COLOR_BLUE,
+        freeze ? "🔴 Already frozen" : "🟢 Not frozen",
+        freeze ? `<@${targetId}>'s time is already frozen.` : `<@${targetId}>'s time is not frozen.`
+      )
+    );
+  }
+
+  await setFrozenState(sub, freeze);
   await refreshPanel(sub); // met à jour un ancien panel s'il existe encore
 
-  const e = newFrozen
-    ? baseEmbed(
-        cfg,
-        COLOR_RED,
-        "🔴 Time frozen",
-        `Your countdown is paused. Use \`${cfg.prefix}unfreeze-time\` to resume.`
-      )
-    : baseEmbed(cfg, COLOR_GREEN, "🟢 Time resumed", "Your countdown is running again.");
-  e.addFields(timeFields(sub)).setThumbnail(message.author.displayAvatarURL({ size: 256 }));
+  const user = await state.bot.users.fetch(targetId).catch(() => null);
+  const e = (freeze
+    ? baseEmbed(cfg, COLOR_RED, "🔴 Time frozen", `<@${targetId}>'s countdown is paused.`)
+    : baseEmbed(cfg, COLOR_GREEN, "🟢 Time resumed", `<@${targetId}>'s countdown is running again.`)
+  ).addFields(timeFields(sub));
+  if (user) e.setThumbnail(user.displayAvatarURL({ size: 256 }));
   await send(e);
 }
 
 // !help : liste des commandes
 async function handleHelp(message, cfg) {
   const p = cfg.prefix;
-  const e = baseEmbed(cfg, COLOR_BLUE, "📖 Access Bot — Commands", `Prefix: \`${p}\``)
-    .addFields(
-      {
-        name: `⏱️ \`${p}check-time [@member]\``,
-        value: "Shows the remaining access time (yours by default).",
-      },
-      {
-        name: `⏱️ \`${p}check-time all\` (staff only)`,
-        value: "Lists the remaining time of every member.",
-      },
-      {
-        name: `🧊 \`${p}freeze-time\``,
-        value: "Freezes your own countdown. Using it again unfreezes.",
-      },
-      {
-        name: `🧊 \`${p}freeze-time all\` (staff only)`,
-        value: "Freezes every member's countdown and sends them a DM.",
-      },
-      {
-        name: `🟢 \`${p}unfreeze-time\``,
-        value: "Unfreezes your countdown.",
-      },
-      {
-        name: `🟢 \`${p}unfreeze-time all\` (staff only)`,
-        value: "Unfreezes every member's countdown and sends them a DM.",
-      },
-      {
-        name: `➕ \`${p}add-time @member hours\` (staff only)`,
-        value: "Grants access or adds hours to a member.",
-      },
-      {
-        name: `➕ \`${p}add-time all hours\` (staff only)`,
-        value: "Adds hours to every member and sends them a DM.",
-      }
-    );
+  const e = baseEmbed(cfg, COLOR_BLUE, "📖 Access Bot — Commands", `Prefix: \`${p}\``).addFields(
+    {
+      name: `⏱️ \`${p}check-time [@member]\``,
+      value: "Shows the remaining access time (yours by default).",
+    },
+    {
+      name: `⏱️ \`${p}check-time all\` (staff only)`,
+      value: "Lists the remaining time of every member.",
+    },
+    {
+      name: `🧊 \`${p}freeze-time @member\` (staff only)`,
+      value: "Freezes a member's countdown (maintenance, unlimited).",
+    },
+    {
+      name: `🧊 \`${p}freeze-time all\` (staff only)`,
+      value: "Freezes every member's countdown and sends them a DM.",
+    },
+    {
+      name: `🟢 \`${p}unfreeze-time @member\` (staff only)`,
+      value: "Resumes a member's countdown.",
+    },
+    {
+      name: `🟢 \`${p}unfreeze-time all\` (staff only)`,
+      value: "Resumes every member's countdown and sends them a DM.",
+    },
+    {
+      name: `➕ \`${p}add-time @member hours\` (staff only)`,
+      value: "Grants access or adds hours to a member.",
+    },
+    {
+      name: `➕ \`${p}add-time all hours\` (staff only)`,
+      value: "Adds hours to every member and sends them a DM.",
+    }
+  );
   if (state.bot?.user) e.setThumbnail(state.bot.user.displayAvatarURL({ size: 256 }));
   await sendEmbed(message)(e);
-}
-
-// !unfreeze-time : dégèle son propre temps (ne fait rien si ce n'est pas gelé)
-async function handleUnfreezeTime(message, args, cfg) {
-  if ((args[0] ?? "").toLowerCase() === "all") return handleFreezeAll(message, cfg, false);
-  const send = sendEmbed(message);
-  const db = state.db;
-  const ownerId = message.author.id;
-  const sub = await db.collection("subscriptions").findOne({ discord_id: ownerId });
-  if (!sub) return send(errorEmbed(cfg, "❌ No active access", "You don't have any active access."));
-  if (!sub.frozen) return send(baseEmbed(cfg, COLOR_BLUE, "🟢 Not frozen", "Your time is not frozen."));
-
-  await setFrozenState(sub, false);
-  await refreshPanel(sub); // met à jour un ancien panel s'il existe encore
-
-  const e = baseEmbed(cfg, COLOR_GREEN, "🟢 Time resumed", "Your countdown is running again.")
-    .addFields(timeFields(sub))
-    .setThumbnail(message.author.displayAvatarURL({ size: 256 }));
-  await send(e);
-}
-
-// ---------- Bouton Freeze ----------
-async function handleFreezeButton(interaction, ownerId) {
-  if (interaction.user.id !== ownerId) {
-    return interaction.reply({
-      content: "❌ This isn't your panel — you can only freeze your own time.",
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-
-  await interaction.deferUpdate();
-  const db = state.db;
-  const sub = await db.collection("subscriptions").findOne({ discord_id: ownerId });
-  if (!sub) {
-    return interaction.followUp({
-      content: "No active access found.",
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-
-  const frozen = Boolean(sub.frozen);
-  if (!frozen && parseInt(sub.freeze_seconds ?? 0, 10) <= 0) {
-    return interaction.followUp({
-      content: "You have no freeze time left.",
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-
-  const newFrozen = !frozen;
-  await db
-    .collection("subscriptions")
-    .updateOne({ discord_id: ownerId }, { $set: { frozen: newFrozen, last_tick: nowIso() } });
-  sub.frozen = newFrozen;
-
-  try {
-    await interaction.editReply(buildPanelView(ownerId, sub));
-  } catch (e) {
-    log.warn(`freeze editReply failed: ${e}`);
-  }
 }
 
 // ---------- Expiration ----------
@@ -732,16 +657,10 @@ async function tickSubscription(sub, elapsed) {
   const uid = sub.discord_id;
   const frozen = Boolean(sub.frozen);
   const burn = parseInt(sub.burn_seconds ?? 0, 10);
-  const freeze = parseInt(sub.freeze_seconds ?? 0, 10);
 
+  // Gelé (par le staff, durée illimitée) : le temps ne bouge pas ; sinon on décompte
   const changed = {};
-  if (frozen) {
-    const newFreeze = Math.max(0, freeze - elapsed);
-    changed.freeze_seconds = newFreeze;
-    if (newFreeze === 0) changed.frozen = false; // fin du gel : le décompte reprend
-  } else {
-    changed.burn_seconds = Math.max(0, burn - elapsed);
-  }
+  if (!frozen) changed.burn_seconds = Math.max(0, burn - elapsed);
   changed.last_tick = nowIso();
 
   await db.collection("subscriptions").updateOne({ discord_id: uid }, { $set: changed });
@@ -797,8 +716,8 @@ function registerMessageHandler(client) {
 
       if (cmd === "addtime") await handleAddTime(message, args, cfg);
       else if (cmd === "checktime") await handleCheckTime(message, args, cfg);
-      else if (cmd === "freezetime") await handleFreezeTime(message, args, cfg);
-      else if (cmd === "unfreezetime") await handleUnfreezeTime(message, args, cfg);
+      else if (cmd === "freezetime") await handleFreezeCommand(message, args, cfg, true);
+      else if (cmd === "unfreezetime") await handleFreezeCommand(message, args, cfg, false);
       else if (cmd === "help") await handleHelp(message, cfg);
     } catch (err) {
       log.error("message handler error:", err);
@@ -806,15 +725,16 @@ function registerMessageHandler(client) {
   });
 }
 
-// Boutons Freeze des anciens panels déjà postés (plus créés par le bot)
+// Anciens panels : le bouton Freeze n'existe plus (gel réservé au staff). Un vieux bouton encore
+// affiché renvoie un message explicatif, puis le panel est remis à jour sans bouton à la minute suivante.
 function registerInteractionHandler(client) {
   client.on("interactionCreate", async (interaction) => {
     try {
-      if (interaction.isButton()) {
-        const parts = interaction.customId.split(":");
-        if (parts[0] === "accessbot" && parts[1] === "freeze") {
-          await handleFreezeButton(interaction, parts[2]);
-        }
+      if (interaction.isButton() && interaction.customId.startsWith("accessbot:freeze")) {
+        await interaction.reply({
+          content: "🧊 Freezing time is now reserved to staff (maintenance only).",
+          flags: MessageFlags.Ephemeral,
+        });
       }
     } catch (err) {
       log.error("interaction error:", err);
