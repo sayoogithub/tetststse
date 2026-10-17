@@ -156,13 +156,20 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
 
             <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 22 }} onPaste={handlePaste}>
                 {digits.map((d, i) => (
-                    <input
-                        key={i}
-                        ref={(el) => (refs.current[i] = el)}
-                        className="otp-input"
-                        style={{ width: 48, height: 56, flex: "0 0 auto", textAlign: "center" }}
-                    />
-                ))}
+    <input
+        key={i}
+        ref={(el) => (refs.current[i] = el)}
+        className="otp-input"
+        type="text"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={1}
+        value={d}
+        onChange={(e) => setD(i, e.target.value)}
+        onKeyDown={(e) => handleKey(i, e)}
+        data-testid={`otp-input-${i}`}
+    />
+))}
             </div>
             <button
                 className="snap-btn"
