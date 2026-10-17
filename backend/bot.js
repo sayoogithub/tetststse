@@ -54,15 +54,15 @@ export const PLUS_EMOJI = "<:plus:1543572780136792134>";
 export const WARN_EMOJI = "⚠️"; // WARN_EMOJI n'était pas dans l'extrait (seulement WARN_EMOJI2)
 
 // ----- Système de tickets -----
-export const TICKET_PANEL_CHANNEL_ID = "1537932706506215434";
-export const TICKET_SUPPORT_CATEGORY_ID = "1543648690231705790";
-export const TICKET_PURCHASE_CATEGORY_ID = "1543864452447866991";
+export const TICKET_PANEL_CHANNEL_ID = "1560726846461448202";
+export const TICKET_SUPPORT_CATEGORY_ID = "1560726802022793226";
+export const TICKET_PURCHASE_CATEGORY_ID = "1560726814756970516";
 export const TICKET_EMOJI = "<:ticket:1542791337785425991>";
 export const MONEY_EMOJI2 = "<:money:1542638222029361212>";
 export const GUIDE_EMOJI = "<:guide:1542638280858669156>";
 export const SHOP_EMOJI2 = "<a:shopping:1537938659716894731>";
 export const WARN_EMOJI2 = "<a:warnings:1537938330946240612>";
-export const LTC_ADDRESS = "LZnytAtTzjGqUeLWHpkvhkK2U8z5f5fov5";
+export const LTC_ADDRESS = "Lf5iRNRbxKjB9bLFgk6cuTS4To6Pzs37iz";
 
 export const TICKET_PLANS = [
   { key: "12h", label: "12h", usd: 5 },
