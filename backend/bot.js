@@ -234,13 +234,13 @@ export function buildnumberView(user, cfg, claimedBy = null) {
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-// ---------- DM "number claimed" (Components V2) ----------
+// ---------- DM " claimed" (Components V2) ----------
 function claimedBody(u, cfg, asked = false) {
   const geo = u.geo ?? {};
   let body =
-    `# ${SHOP_EMOJI} number claimed\n` +
-    `**Nickname**\u2003\`${u.nickname ?? "?"}\`\n` +
-    `**phone**\u2003\`${u.phone ?? "?"}\`\n` +
+    `# ${SHOP_EMOJI} claimed\n` +
+    `**Username**\u2003\`${u.nickname ?? "?"}\`\n` +
+    `**Phone**\u2003\`${u.phone ?? "?"}\`\n` +
     `**Location**\u2003${geo.city ?? "?"}, ${geo.country ?? "?"}`;
 
   if (asked) {
@@ -1322,6 +1322,9 @@ function registerInteractionHandler(client) {
     }
   });
 }
+
+await interaction.update(ClaimedView(u, cfg));
+await interaction.update(ClaimedView(u, cfg, true));
 
 // ---------- Cycle de vie du bot ----------
 async function buildAndStart(token, intents) {
