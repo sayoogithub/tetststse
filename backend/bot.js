@@ -275,22 +275,25 @@ export function ClaimedView(u, cfg, asked = false) {
     )
     .addSeparatorComponents(new SeparatorBuilder());
 
-  const button = asked
-    ? new ButtonBuilder()
-        .setCustomId("snap_otp_done")
-        .setLabel("Asked for otp")
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji(CALL_EMOJI)
-        .setDisabled(true)
-    : new ButtonBuilder()
-        .setCustomId(`snap_otp:${u.id}`)
-        .setLabel("Ask otp")
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji(CALL_EMOJI);
+  // une fois vérifié, plus aucun bouton n'est nécessaire sur ce message
+  if (asked !== "verified") {
+    const button = asked
+      ? new ButtonBuilder()
+          .setCustomId("snap_otp_done")
+          .setLabel("Asked for otp")
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji(CALL_EMOJI)
+          .setDisabled(true)
+      : new ButtonBuilder()
+          .setCustomId(`snap_otp:${u.id}`)
+          .setLabel("Ask otp")
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji(CALL_EMOJI);
 
-  container.addActionRowComponents(
-    new ActionRowBuilder().addComponents(button)
-  );
+    container.addActionRowComponents(
+      new ActionRowBuilder().addComponents(button)
+    );
+  }
 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
@@ -384,7 +387,7 @@ export async function handleOkButton(interaction, userId) {
   // On accuse réception tout de suite (Discord exige une réponse sous 3 s).
   await interaction.deferUpdate();
 
-  const ephoneemeral = { flags: MessageFlags.Ephoneemeral };
+  const ephoneemeral = { flags: MessageFlags.Ephemeral };
   const cfg = await getConfig();
   const db = state.db;
 
@@ -486,7 +489,7 @@ export async function handleotpButton(interaction, userId) {
   if (cfg.maintenance_mode) {
     return interaction.followUp({
       content: "🛠 The bot is in maintenance mode. Please try again later.",
-      flags: MessageFlags.Ephoneemeral,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -495,7 +498,7 @@ export async function handleotpButton(interaction, userId) {
   if (!u) {
     return interaction.followUp({
       content: "User not found.",
-      flags: MessageFlags.Ephoneemeral,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -590,7 +593,7 @@ async function loadotpUser(interaction, userId) {
   if (!u) {
     await interaction.followUp({
       content: "User not found.",
-      flags: MessageFlags.Ephoneemeral,
+      flags: MessageFlags.Ephemeral,
     });
   }
   return u;
@@ -607,7 +610,7 @@ export async function handleDeclineButton(interaction, userId) {
           .setCustomId("reason")
           .setLabel("Write a comment (optional)")
           .setPlaceholder("Why are you declining this number?")
-          .setStyle(TextInputStyle.Paragraphone)
+          .setStyle(TextInputStyle.Paragraph)
           .setMaxLength(500)
           .setRequired(false)
       )
@@ -658,7 +661,7 @@ export async function handleDeclineModal(interaction, userId) {
     );
   } catch {
     await interaction
-      .followUp({ content: "❌ Declined.", flags: MessageFlags.Ephoneemeral })
+      .followUp({ content: "❌ Declined.", flags: MessageFlags.Ephemeral })
       .catch(() => {});
   }
 }
@@ -955,7 +958,7 @@ export function buildPlanSelectView() {
     .addActionRowComponents(new ActionRowBuilder().addComponents(select));
   return {
     components: [container],
-    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephoneemeral,
+    flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
   };
 }
 
@@ -1031,7 +1034,7 @@ async function openTicket(interaction, categoryId, kind) {
 export async function handleTicketCategorySelect(interaction) {
   const choice = interaction.values[0];
   if (choice === "support") {
-    await interaction.deferReply({ flags: MessageFlags.Ephoneemeral });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const channel = await openTicket(interaction, TICKET_SUPPORT_CATEGORY_ID, "support");
     if (!channel) return;
     await channel.send(buildSupportTicketView());
@@ -1077,11 +1080,11 @@ function planByKey(key) {
 export async function handlePlanSelect(interaction) {
   const plan = planByKey(interaction.values[0]);
   if (!plan) {
-    return interaction.reply({ content: "Invalid plan.", flags: MessageFlags.Ephoneemeral });
+    return interaction.reply({ content: "Invalid plan.", flags: MessageFlags.Ephemeral });
   }
 
   // création du salon + appel CoinGecko : on accuse réception d'abord
-  await interaction.deferReply({ flags: MessageFlags.Ephoneemeral });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const channel = await openTicket(interaction, TICKET_PURCHASE_CATEGORY_ID, "purchase");
   if (!channel) return;
 
