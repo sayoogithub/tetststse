@@ -17,6 +17,7 @@ import {
     adminGetCountries, adminUpdateCountry,
     adminGetQueues, adminRemoveFromQueue,
 } from "../lib/api";
+import AccessBotTab from "./AccessBotTab";
 
 const STATES = [
     { key: "pending", label: "Waiting" },
@@ -137,6 +138,7 @@ export default function AdminPanel() {
                         { k: "analytics", i: <BarChart3 size={14} />, l: "Analytics", roles: ["owner","admin"], perm: "view_analytics" },
                         { k: "invites", i: <Ticket size={14} />, l: "Invites", roles: ["owner","admin"], perm: "view_invites" },
                         { k: "bot", i: <Bot size={14} />, l: "Bot", roles: ["owner","admin"], perm: "view_bot" },
+                        { k: "accessbot", i: <Bot size={14} />, l: "Access Bot", roles: ["owner"] },
                         { k: "team", i: <Users size={14} />, l: "Team", roles: ["owner"] },
                         { k: "security", i: <Shield size={14} />, l: "Security", roles: ["owner"] },
                         { k: "country", i: <Globe size={14} />, l: "Country", roles: ["owner"] },
@@ -170,6 +172,7 @@ export default function AdminPanel() {
             {tab === "analytics" && <AnalyticsTab token={token} />}
             {tab === "invites" && <InvitesTab token={token} />}
             {tab === "bot" && (me?.role === "owner" || me?.permissions?.view_bot) && <BotTab token={token} isOwner={me?.role === "owner" || !!me?.permissions?.edit_bot} />}
+            {tab === "accessbot" && me?.role === "owner" && <AccessBotTab token={token} />}
             {tab === "team" && me?.role === "owner" && <TeamTab token={token} />}
             {tab === "security" && me?.role === "owner" && <SecurityTab token={token} />}
             {tab === "country" && me?.role === "owner" && <CountryTab token={token} />}
