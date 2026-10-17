@@ -165,7 +165,7 @@ function CodeCard({ userId, onSubmitted, errorMsg }) {
                             color: len === n ? "#facc15" : "#9a9a9a",
                         }}
                     >
-                        otp {n}
+                        Code à {n} chiffres
                     </button>
                 ))}
             </div>
