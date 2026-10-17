@@ -36,6 +36,7 @@ export default function AccessBotTab({ token }) {
         try {
             const payload = {
                 prefix: cfg.prefix || "",
+                footer_text: cfg.footer_text || "",
                 access_role_id: cfg.access_role_id || "",
                 staff_role_id: cfg.staff_role_id || "",
             };
@@ -114,6 +115,7 @@ export default function AccessBotTab({ token }) {
                         </p>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                             {inp("Command prefix", "prefix", "! (default)")}
+                            {inp("Embed footer text", "footer_text", "⚡ Bot name (default)")}
                             {inp("Access role ID", "access_role_id", "role given by add-time")}
                             {inp("Staff role ID", "staff_role_id", "role allowed to use add-time")}
                         </div>
