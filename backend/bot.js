@@ -179,7 +179,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export function buildnumberView(user, cfg, claimedBy = null) {
   const desc =
     cfg.embed_desc || "A new number just came in. Press the button to claim it.";
-  const accent = claimedBy ? 0x22c55e : cfg.embed_color ?? 0xfacc15;
+  const accent = 0x22c55e; // vert, que le number soit déjà claim ou non
 
   const nick = user.nickname ?? "?";
   const geo = user.geo ?? {};
@@ -261,8 +261,15 @@ function claimedBody(u, cfg, asked = false) {
 // Remplace la classe ClaimedView (+ otpButton).
 // Usage : user.send(ClaimedView(u, cfg)) ou interaction.editReply(ClaimedView(u, cfg, true))
 export function ClaimedView(u, cfg, asked = false) {
+  let accent = cfg.embed_color ?? 0xfacc15;
+  if (asked === true) {
+    accent = 0xfacc15; // jaune : "Ask otp" pressé
+  } else if (asked === "verified") {
+    accent = 0x22c55e; // vert : "Success" pressé
+  }
+
   const container = new ContainerBuilder()
-    .setAccentColor(cfg.embed_color ?? 0xfacc15)
+    .setAccentColor(accent)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(claimedBody(u, cfg, asked))
     )
