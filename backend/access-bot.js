@@ -29,6 +29,7 @@ import {
   ButtonStyle,
   Client,
   ContainerBuilder,
+  EmbedBuilder,
   GatewayIntentBits,
   MessageFlags,
   REST,
@@ -68,7 +69,7 @@ export function setDb(db) {
 
 // ---------- Config (stockée en base, clé "access_bot_config") ----------
 const CONFIG_KEY = "access_bot_config";
-export const ACCESS_CONFIG_KEYS = ["token", "prefix", "access_role_id", "staff_role_id", "panel_channel_id"];
+export const ACCESS_CONFIG_KEYS = ["token", "prefix", "footer_text", "access_role_id", "staff_role_id", "panel_channel_id"];
 
 // Valeurs enregistrées en base (vides = "utiliser la variable d'environnement / le défaut")
 // Petit cache : le handler de messages lit la config à chaque message du serveur
@@ -85,6 +86,7 @@ export async function getAccessConfig() {
   return {
     token: "",
     prefix: "",
+    footer_text: "",
     panel_channel_id: "",
     access_role_id: "",
     staff_role_id: "",
@@ -107,6 +109,7 @@ export async function getAccessEffectiveConfig() {
   return {
     token: (c.token || process.env.ACCESS_BOT_TOKEN || "").trim(),
     prefix: (c.prefix || process.env.ACCESS_BOT_PREFIX || "!").trim() || "!",
+    footer_text: (c.footer_text || process.env.ACCESS_BOT_FOOTER || "").trim(),
     panel_channel_id: (c.panel_channel_id || process.env.PANEL_CHANNEL_ID || "").trim(),
     access_role_id: (c.access_role_id || process.env.ACCESS_ROLE_ID || BUYER_ROLE_ID).trim(),
     staff_role_id: (c.staff_role_id || process.env.STAFF_ROLE_ID || STAFF_ROLE_ID).trim(),
@@ -225,23 +228,68 @@ async function fetchMember(guild, arg) {
   return guild.members.fetch(id).catch(() => null);
 }
 
-// Réponse à un message sans pinguer personne
-const replyTo = (message) => (content) =>
-  message.reply({ content, allowedMentions: { parse: [], repliedUser: false } });
+// ---------- Embeds ----------
+const COLOR_BLUE = 0x4a9eff;
+const COLOR_GREEN = 0x22c55e;
+const COLOR_RED = 0xe23b3b;
 
+function baseEmbed(cfg, color, title, description) {
+  const e = new EmbedBuilder().setColor(color).setTitle(title);
+  if (description) e.setDescription(description);
+  e.setFooter({ text: cfg.footer_text || `⚡ ${state.bot?.user?.username ?? "Access Bot"}` });
+  return e;
+}
+
+// Répond à un message avec un embed, sans pinguer personne
+const sendEmbed = (message) => (embed) =>
+  message.reply({ embeds: [embed], allowedMentions: { parse: [], repliedUser: false } });
+
+// Temps réellement restant, en tenant compte du temps écoulé depuis le dernier tick (≤ 60 s)
+function liveSeconds(sub) {
+  const frozen = Boolean(sub.frozen);
+  let elapsed = 0;
+  if (sub.last_tick) {
+    const prev = parseIsoUtc(sub.last_tick).getTime();
+    if (!Number.isNaN(prev)) elapsed = Math.max(0, Math.floor((Date.now() - prev) / 1000));
+  }
+  const burn = parseInt(sub.burn_seconds ?? 0, 10);
+  const freeze = parseInt(sub.freeze_seconds ?? 0, 10);
+  return {
+    burn: frozen ? burn : Math.max(0, burn - elapsed),
+    freeze: frozen ? Math.max(0, freeze - elapsed) : freeze,
+  };
+}
+
+// Champs communs : temps restant / expiration exacte (timestamps Discord) / freeze dispo
+function timeFields(sub) {
+  const { burn, freeze } = liveSeconds(sub);
+  const fields = [{ name: "⏳ Time remaining", value: `**${fmtSecs(burn)}**` }];
+  if (sub.frozen) {
+    fields.push({ name: "📅 Exact expiration", value: "Paused — your time is frozen" });
+  } else {
+    const ts = Math.floor(Date.now() / 1000) + burn;
+    fields.push({ name: "📅 Exact expiration", value: `<t:${ts}:F> (<t:${ts}:R>)` });
+  }
+  fields.push({ name: "🧊 Freeze available", value: `**${fmtSecs(freeze)}**` });
+  return fields;
+}
+
+const errorEmbed = (cfg, title, description) => baseEmbed(cfg, COLOR_RED, title, description);
+
+// ---------- Commandes ----------
 async function handleAddTime(message, args, cfg) {
-  const say = replyTo(message);
+  const send = sendEmbed(message);
 
   if (!isStaff(message.member, cfg.staff_role_id)) {
-    return say("❌ You don't have permission to use this command.");
+    return send(errorEmbed(cfg, "❌ Permission denied", "You don't have permission to use this command."));
   }
 
   const member = await fetchMember(message.guild, args[0]);
   const hours = parseInt(args[1], 10);
   if (!member || !Number.isInteger(hours) || String(hours) !== String(args[1])) {
-    return say(`⚠️ Usage: \`${cfg.prefix}add-time @member hours\``);
+    return send(errorEmbed(cfg, "⚠️ Usage", `\`${cfg.prefix}add-time @member hours\``));
   }
-  if (hours <= 0) return say("⚠️ Hours must be a positive number.");
+  if (hours <= 0) return send(errorEmbed(cfg, "⚠️ Invalid hours", "Hours must be a positive number."));
 
   const db = state.db;
   const addSecs = hours * 3600;
@@ -254,15 +302,19 @@ async function handleAddTime(message, args, cfg) {
 
     if (!existing) {
       // Premier octroi : crée l'abonnement (aucun panel n'est posté)
-      await db.collection("subscriptions").insertOne({
+      const sub = {
         discord_id: member.id,
         username: member.user.username,
         burn_seconds: addSecs,
         freeze_seconds: addSecs,
         frozen: false,
         last_tick: nowIso(),
-      });
-      await say(`✅ Access granted to <@${member.id}> (${hours}h)`);
+      };
+      await db.collection("subscriptions").insertOne({ ...sub });
+      const e = baseEmbed(cfg, COLOR_GREEN, "✅ Access granted", `<@${member.id}> received **${hours}h** of access.`)
+        .addFields(timeFields(sub))
+        .setThumbnail(member.user.displayAvatarURL({ size: 256 }));
+      await send(e);
     } else {
       // Déjà abonné : ajoute les heures (1:1 sur le temps et le freeze disponible)
       await db.collection("subscriptions").updateOne(
@@ -271,77 +323,96 @@ async function handleAddTime(message, args, cfg) {
       );
       const updated = await db.collection("subscriptions").findOne({ discord_id: member.id });
       await refreshPanel(updated); // met à jour un ancien panel s'il existe encore, sinon rien
-      await say(
-        `✅ Added \`${hours}h\` to <@${member.id}>.\n` +
-          `New balance — Time: \`${fmtSecs(updated.burn_seconds ?? 0)}\`, ` +
-          `Freeze: \`${fmtSecs(updated.freeze_seconds ?? 0)}\``
-      );
+      const e = baseEmbed(cfg, COLOR_GREEN, "➕ Time added", `Added **${hours}h** to <@${member.id}>.`)
+        .addFields(timeFields(updated))
+        .setThumbnail(member.user.displayAvatarURL({ size: 256 }));
+      await send(e);
     }
   } catch (e) {
     log.error(`add-time failed: ${e}`);
-    await say(`❌ Error: ${e.message ?? e}`);
+    const hint =
+      e?.code === 50013
+        ? "\nThe bot's role must be **above** the access role and have the *Manage Roles* permission."
+        : "";
+    await send(errorEmbed(cfg, "❌ Error", `${e.message ?? e}${hint}`));
   }
 }
 
-async function handleCheckTime(message, args) {
-  const say = replyTo(message);
+async function handleCheckTime(message, args, cfg) {
+  const send = sendEmbed(message);
   const targetId = parseUserId(args[0]) ?? message.author.id;
   const sub = await state.db.collection("subscriptions").findOne({ discord_id: targetId });
 
-  if (!sub) return say(`No active access found for <@${targetId}>.`);
+  if (!sub) {
+    return send(errorEmbed(cfg, "❌ No active access", `No active access found for <@${targetId}>.`));
+  }
 
-  const frozen = Boolean(sub.frozen);
-  await say(
-    `**<@${targetId}>**\n` +
-      `Time left: \`${fmtSecs(sub.burn_seconds ?? 0)}\`\n` +
-      `Freeze available: \`${fmtSecs(sub.freeze_seconds ?? 0)}\`\n` +
-      `Status: ${frozen ? "🔴 FROZEN" : "🟢 ACTIVE"}`
-  );
+  const user = await state.bot.users.fetch(targetId).catch(() => null);
+  const e = baseEmbed(
+    cfg,
+    sub.frozen ? COLOR_RED : COLOR_BLUE,
+    "⏱️ Remaining VIP Time",
+    `Here is the remaining access time for <@${targetId}> :`
+  ).addFields(timeFields(sub));
+  if (user) e.setThumbnail(user.displayAvatarURL({ size: 256 }));
+  await send(e);
 }
 
 // !freeze-time : gèle / dégèle SON propre temps (bascule)
-async function handleFreezeTime(message) {
-  const say = replyTo(message);
+async function handleFreezeTime(message, cfg) {
+  const send = sendEmbed(message);
   const db = state.db;
   const ownerId = message.author.id;
   const sub = await db.collection("subscriptions").findOne({ discord_id: ownerId });
-  if (!sub) return say("No active access found.");
+  if (!sub) return send(errorEmbed(cfg, "❌ No active access", "You don't have any active access."));
 
   const frozen = Boolean(sub.frozen);
   if (!frozen && parseInt(sub.freeze_seconds ?? 0, 10) <= 0) {
-    return say("You have no freeze time left.");
+    return send(errorEmbed(cfg, "🧊 No freeze left", "You have no freeze time left."));
   }
 
   const newFrozen = !frozen;
+  const now = nowIso();
   await db
     .collection("subscriptions")
-    .updateOne({ discord_id: ownerId }, { $set: { frozen: newFrozen, last_tick: nowIso() } });
+    .updateOne({ discord_id: ownerId }, { $set: { frozen: newFrozen, last_tick: now } });
   sub.frozen = newFrozen;
+  sub.last_tick = now;
   await refreshPanel(sub); // met à jour un ancien panel s'il existe encore
 
-  await say(
-    newFrozen
-      ? `🔴 Your time is now **frozen**. Freeze available: \`${fmtSecs(sub.freeze_seconds ?? 0)}\`. Use \`unfreeze-time\` (or this command again) to unfreeze.`
-      : `🟢 Your time is **active** again. Time left: \`${fmtSecs(sub.burn_seconds ?? 0)}\`.`
-  );
+  const e = newFrozen
+    ? baseEmbed(
+        cfg,
+        COLOR_RED,
+        "🔴 Time frozen",
+        `Your countdown is paused. Use \`${cfg.prefix}unfreeze-time\` to resume.`
+      )
+    : baseEmbed(cfg, COLOR_GREEN, "🟢 Time resumed", "Your countdown is running again.");
+  e.addFields(timeFields(sub)).setThumbnail(message.author.displayAvatarURL({ size: 256 }));
+  await send(e);
 }
 
 // !unfreeze-time : dégèle son propre temps (ne fait rien si ce n'est pas gelé)
-async function handleUnfreezeTime(message) {
-  const say = replyTo(message);
+async function handleUnfreezeTime(message, cfg) {
+  const send = sendEmbed(message);
   const db = state.db;
   const ownerId = message.author.id;
   const sub = await db.collection("subscriptions").findOne({ discord_id: ownerId });
-  if (!sub) return say("No active access found.");
-  if (!sub.frozen) return say("🟢 Your time is not frozen.");
+  if (!sub) return send(errorEmbed(cfg, "❌ No active access", "You don't have any active access."));
+  if (!sub.frozen) return send(baseEmbed(cfg, COLOR_BLUE, "🟢 Not frozen", "Your time is not frozen."));
 
+  const now = nowIso();
   await db
     .collection("subscriptions")
-    .updateOne({ discord_id: ownerId }, { $set: { frozen: false, last_tick: nowIso() } });
+    .updateOne({ discord_id: ownerId }, { $set: { frozen: false, last_tick: now } });
   sub.frozen = false;
+  sub.last_tick = now;
   await refreshPanel(sub); // met à jour un ancien panel s'il existe encore
 
-  await say(`🟢 Your time is **active** again. Time left: \`${fmtSecs(sub.burn_seconds ?? 0)}\`.`);
+  const e = baseEmbed(cfg, COLOR_GREEN, "🟢 Time resumed", "Your countdown is running again.")
+    .addFields(timeFields(sub))
+    .setThumbnail(message.author.displayAvatarURL({ size: 256 }));
+  await send(e);
 }
 
 // ---------- Bouton Freeze ----------
@@ -504,9 +575,9 @@ function registerMessageHandler(client) {
       const cmd = (cmdRaw ?? "").toLowerCase().replace(/-/g, "");
 
       if (cmd === "addtime") await handleAddTime(message, args, cfg);
-      else if (cmd === "checktime") await handleCheckTime(message, args);
-      else if (cmd === "freezetime") await handleFreezeTime(message);
-      else if (cmd === "unfreezetime") await handleUnfreezeTime(message);
+      else if (cmd === "checktime") await handleCheckTime(message, args, cfg);
+      else if (cmd === "freezetime") await handleFreezeTime(message, cfg);
+      else if (cmd === "unfreezetime") await handleUnfreezeTime(message, cfg);
     } catch (err) {
       log.error("message handler error:", err);
     }
