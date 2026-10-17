@@ -35,6 +35,8 @@ import {
 } from "discord.js";
 import { randomUUID } from "node:crypto";
 import { MongoClient } from "mongodb";
+import { TextInputStyle } from "discord.js";
+console.log("DEBUG TextInputStyle:", TextInputStyle);
 
 // ---------- Logger (équivalent de logging.getLogger("bot")) ----------
 export const log = {
