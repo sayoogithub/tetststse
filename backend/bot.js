@@ -23,14 +23,11 @@ import {
   EmbedBuilder,
   GatewayIntentBits,
   MessageFlags,
-  ModalBuilder,
   PermissionFlagsBits,
   SeparatorBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
   TextDisplayBuilder,
-  TextInputBuilder,
-  TextInputStyle,
   parseEmoji,
 } from "discord.js";
 import { randomUUID } from "node:crypto";
@@ -559,7 +556,7 @@ export function buildotpResultView(title, nickname, phone, accent, extra = "") {
 export function buildotpVerificationView(userId, nickname, phone, code = "", cfg = {}) {
   const declineBtn = new ButtonBuilder()
     .setCustomId(`snap_decline:${userId}`)
-    .setLabel("DECLINE")
+    .setLabel("Wrong number")
     .setStyle(ButtonStyle.Danger)
     .setEmoji(BAN_EMOJI);
   const retryBtn = new ButtonBuilder()
@@ -598,41 +595,20 @@ async function loadotpUser(interaction, userId) {
   return u;
 }
 
-// DECLINE : ouvre le modal (showModal doit être la toute première réponse, pas de defer avant)
+// WRONG NUMBER (ex-DECLINE) : action directe au clic, sans formulaire/modal.
 export async function handleDeclineButton(interaction, userId) {
-  const modal = new ModalBuilder()
-    .setCustomId(`snap_decline_modal:${userId}`)
-    .setTitle("Decline number")
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("reason")
-          .setLabel("Write a comment (optional)")
-          .setPlaceholder("Why are you declining this number?")
-          .setStyle(TextInputStyle.Paragraph)
-          .setMaxLength(500)
-          .setRequired(false)
-      )
-    );
-  await interaction.showModal(modal);
-}
-
-// Soumission du modal (DeclineReasonModal.on_submit)
-export async function handleDeclineModal(interaction, userId) {
   await interaction.deferUpdate();
 
   const db = state.db;
   const u = await loadotpUser(interaction, userId);
   if (!u) return;
 
-  const comment = (interaction.fields.getTextInputValue("reason") ?? "").trim();
-
   await db.collection("users").updateOne(
     { id: userId },
     {
       $set: {
         state: "declined",
-        decline_reason: comment,
+        decline_reason: "",
         declined_by_id: interaction.user.id,
         updated_at: nowIso(),
       },
@@ -644,23 +620,22 @@ export async function handleDeclineModal(interaction, userId) {
     user_id: userId,
     username: u.nickname,
     phone: u.phone,
-    reason: comment,
+    reason: "",
     discord_user_id: interaction.user.id,
     discord_username: interaction.user.username,
     created_at: nowIso(),
   });
   await logAction(
-    `USER_DECLINED, <@${interaction.user.id}>, (${comment || "no comment"}) — \`${u.nickname}\``
+    `USER_DECLINED, <@${interaction.user.id}> \u2014 \`${u.nickname}\``
   );
 
   try {
-    const extra = comment ? `Comment: ${comment}` : "";
     await interaction.editReply(
-      buildotpResultView(`${BAN_EMOJI} Declined`, u.nickname, u.phone, 0xef4444, extra)
+      buildotpResultView(`${BAN_EMOJI} Wrong number`, u.nickname, u.phone, 0xef4444)
     );
   } catch {
     await interaction
-      .followUp({ content: "❌ Declined.", flags: MessageFlags.Ephemeral })
+      .followUp({ content: "❌ Wrong number.", flags: MessageFlags.Ephemeral })
       .catch(() => {});
   }
 }
@@ -1351,14 +1326,6 @@ function registerInteractionHandler(client) {
         const handler = STATIC_SELECTS.get(interaction.customId);
         if (handler) await handler(interaction);
         return;
-      }
-
-      if (
-        interaction.isModalSubmit() &&
-        interaction.customId.startsWith("snap_decline_modal:")
-      ) {
-        const userId = interaction.customId.slice("snap_decline_modal:".length);
-        await handleDeclineModal(interaction, userId);
       }
     } catch (err) {
       log.error("interaction error:", err);
